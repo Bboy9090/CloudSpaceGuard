@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cloud Space Guard — Cross-Platform Multi-Cloud Offload &amp; Space Saver</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: radial-gradient(circle at top right, #0f172a 0%, #060b16 60%, #030712 100%);
+      color: #f1f5f9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+      line-height: 1.5;
+      min-height: 100vh;
+      padding-bottom: 4rem;
+    }
+    .glass {
+      background: rgba(15, 23, 42, 0.78);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(148, 163, 184, 0.16);
+    }
+    .progress-bar-shine {
+      background: linear-gradient(90deg, #06b6d4 0%, #3b82f6 50%, #10b981 100%);
+    }
+    /* Self-contained Offline Store-Compliant Utility System (Zero External CDN Calls) */
+    .hidden { display: none !important; }
+    .block { display: block; }
+    .flex { display: flex; }
+    .grid { display: grid; }
+    .flex-col { flex-direction: column; }
+    .flex-wrap { flex-wrap: wrap; }
+    . flex-1 { flex: 1 1 0%; }
+    .shrink-0 { flex-shrink: 0; }
+    .items-center { align-items: center; }
+    .items-start { align-items: flex-start; }
+    .justify-between { justify-content: space-between; }
+    .justify-center { justify-content: center; }
+    .justify-end { justify-content: flex-end; }
+    .gap-1\.5 { gap: 0.375rem; }
+    .gap-2 { gap: 0.5rem; }
+    .gap-3 { gap: 0.75rem; }
+    .gap-4 { gap: 1rem; }
+    .gap-6 { gap: 1.5rem; }
+    .space-y-2 > * + * { margin-top: 0.5rem; }
+    .space-y-3 > * + * { margin-top: 0.75rem; }
+    .space-y-4 > * + * { margin-top: 1rem; }
+    .space-y-6 > * + * { margin-top: 1.5rem; }
+    .space-x-1\.5 > * + * { margin-left: 0.375rem; }
+    .max-w-7xl { max-width: 80rem; }
+    .max-w-md { max-width: 28rem; }
+    .max-w-xs { max-width: 20rem; }
+    .mx-auto { margin-left: auto; margin-right: auto; }
+    .mt-6 { margin-top: 1.5rem; }
+    .mt-0\.5 { margin-top: 0.125rem; }
+    .mb-1 { margin-bottom: 0.25rem; }
+    .px-1\.5 { padding-left: 0.375rem; padding-right: 0.375rem; }
+    .px-2 { padding-left: 0.5rem; padding-right: 0.5rem; }
+    .px-2\.5 { padding-left: 0.625rem; padding-right: 0.625rem; }
+    .px-3 { padding-left: 0.75rem; padding-right: 0.75rem; }
+    .px-3\.5 { padding-left: 0.875rem; padding-right: 0.875rem; }
+    .px-4 { padding-left: 1rem; padding-right: 1rem; }
+    .px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
+    .py-0\.5 { padding-top: 0.125rem; padding-bottom: 0.125rem; }
+    .py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+    .py-1\.5 { padding-top: 0.375rem; padding-bottom: 0.375rem; }
+    .py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+    .py-2\.5 { padding-top: 0.625rem; padding-bottom: 0.625rem; }
+    .py-4 { padding-top: 1rem; padding-bottom: 1rem; }
+    .p-1\.5 { padding: 0.375rem; }
+    .p-2\.5 { padding: 0.625rem; }
+    .p-3\.5 { padding: 0.875rem; }
+    .p-4 { padding: 1rem; }
+    .p-5 { padding: 1.25rem; }
+    .p-6 { padding: 1.5rem; }
+    .p-8 { padding: 2rem; }
+    .pt-1 { padding-top: 0.25rem; }
+    .pt-2 { padding-top: 0.5rem; }
+    .pb-3 { padding-bottom: 0.75rem; }
+    .pr-1 { padding-right: 0.25rem; }
+    .w-full { width: 100%; }
+    .w-10 { width: 2.5rem; }
+    .w-11 { width: 2.75rem; }
+    .h-11 { height: 2.75rem; }
+    .h-4 { height: 1rem; }
+    .h-full { height: 100%; }
+    .max-h-56 { max-height: 14rem; }
+    .min-w-0 { min-width: 0; }
+    .min-w-\[220px\] { min-width: 220px; }
+    .overflow-y-auto { overflow-y: auto; }
+    .overflow-x-auto { overflow-x: auto; }
+    .overflow-hidden { overflow: hidden; }
+    .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rounded { border-radius: 0.25rem; }
+    .rounded-lg { border-radius: 0.5rem; }
+    .rounded-xl { border-radius: 0.75rem; }
+    .rounded-2xl { border-radius: 1rem; }
+    .rounded-full { border-radius: 9999px; }
+    .border { border: 1px solid rgba(148, 163, 184, 0.2); }
+    .border-b { border-bottom: 1px solid rgba(148, 163, 184, 0.2); }
+    .border-t { border-top: 1px solid rgba(148, 163, 184, 0.2); }
+    .border-slate-700 { border-color: #334155; }
+    .border-slate-800 { border-color: #1e293b; }
+    .border-cyan-400 { border-color: #22d3ee; }
+    .border-cyan-500\/40 { border-color: rgba(6, 182, 212, 0.4); }
+    .border-emerald-500\/30 { border-color: rgba(16, 185, 129, 0.3); }
+    .border-emerald-500\/40 { border-color: rgba(16, 185, 129, 0.4); }
+    .border-amber-500\/30 { border-color: rgba(245, 158, 11, 0.3); }
+    .border-rose-500\/40 { border-color: rgba(244, 63, 94, 0.4); }
+    .bg-slate-950\/90, .bg-slate-950\/80, .bg-slate-950\/60 { background-color: rgba(2, 6, 23, 0.82); }
+    .bg-slate-900, .bg-slate-900\/90, .bg-slate-900\/60 { background-color: rgba(15, 23, 42, 0.88); }
+    .bg-slate-800 { background-color: #1e293b; }
+    .bg-cyan-500 { background-color: #06b6d4; }
+    .bg-cyan-500\/15, .bg-cyan-500\/20 { background-color: rgba(6, 182, 212, 0.18); }
+    .bg-emerald-600 { background-color: #059669; }
+    .bg-emerald-500\/15, .bg-emerald-500\/20 { background-color: rgba(16, 185, 129, 0.18); }
+    .bg-rose-500\/15 { background-color: rgba(244, 63, 94, 0.18); }
+    .bg-black\/70 { background-color: rgba(0, 0, 0, 0.7); }
+    .bg-gradient-to-br, .bg-gradient-to-r { background: linear-gradient(135deg, #06b6d4 0%, #2563eb 100%); }
+    .text-white { color: #ffffff; }
+    .text-slate-950 { color: #020617; }
+    .text-slate-200 { color: #e2e8f0; }
+    .text-slate-300 { color: #cbd5e1; }
+    .text-slate-400 { color: #94a3b8; }
+    .text-slate-500 { color: #64748b; }
+    .text-cyan-300 { color: #67e8f9; }
+    .text-cyan-400 { color: #22d3ee; }
+    .text-emerald-200 { color: #a7f3d0; }
+    .text-emerald-300 { color: #6ee7b7; }
+    .text-emerald-400 { color: #34d399; }
+    .text-amber-300 { color: #fcd34d; }
+    .text-amber-400 { color: #fbbf24; }
+    .text-rose-200 { color: #fecdd3; }
+    .text-\[10px\] { font-size: 10px; }
+    .text-\[11px\] { font-size: 11px; }
+    .text-xs { font-size: 0.75rem; }
+    .text-sm { font-size: 0.875rem; }
+    .text-base { font-size: 1rem; }
+    .text-lg { font-size: 1.125rem; }
+    .text-xl { font-size: 1.25rem; }
+    .text-2xl { font-size: 1.5rem; }
+    .font-medium { font-weight: 500; }
+    .font-semibold { font-weight: 600; }
+    .font-bold { font-weight: 700; }
+    .font-black { font-weight: 900; }
+    .font-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    .uppercase { text-transform: uppercase; }
+    .tracking-wider { letter-spacing: 0.05em; }
+    .tracking-tight { letter-spacing: -0.025em; }
+    .text-left { text-align: left; }
+    .text-center { text-align: center; }
+    .text-right { text-align: right; }
+    .cursor-pointer { cursor: pointer; }
+    .sticky { position: sticky; }
+    .fixed { position: fixed; }
+    .relative { position: relative; }
+    .inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
+    .top-0 { top: 0; }
+    .z-30 { z-index: 30; }
+    .z-50 { z-index: 50; }
+    .accent-cyan-400 { accent-color: #22d3ee; }
+    button { cursor: pointer; border: none; background: transparent; color: inherit; font: inherit; }
+    button:hover { opacity: 0.94; }
+    table { width: 100%; border-collapse: collapse; }
+    tr { border-bottom: 1px solid rgba(30, 41, 59, 0.7); }
+    input[type="text"], select { color: #fff; background: #0f172a; border: 1px solid #334155; padding: 0.5rem 0.75rem; border-radius: 0.5rem; width: 100%; }
+    @media (min-width: 768px) {
+      .md\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (min-width: 1024px) {
+      .lg\:grid-cols-12 { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+      .lg\:col-span-7 { grid-column: span 7 / span 7; }
+      .lg\:col-span-5 { grid-column: span 5 / span 5; }
+    }
+  </style>
+</head>
+<body class="min-h-screen pb-16">
+  <!-- Offline Dual-App Animated Launch Splash Overlay -->
+  <style>
+    #app-splash-overlay {
+      position: fixed; inset: 0; z-index: 99999;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: radial-gradient(circle at 50% 42%, #111827 0%, #0B1120 75%);
+      color: #F8FAFC; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      transition: opacity 0.45s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.45s;
+    }
+    #app-splash-overlay.splash-hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+    .splash-logo-wrap {
+      width: 116px; height: 116px; margin-bottom: 20px;
+      filter: drop-shadow(0 0 28px rgba(16, 185, 129, 0.35));
+      animation: splashPulse 2.2s ease-in-out infinite;
+    }
+    #app-splash-overlay[data-app="bobfwtools"] .splash-logo-wrap {
+      filter: drop-shadow(0 0 28px rgba(245, 158, 11, 0.4));
+    }
+    .splash-title { font-size: 22px; font-weight: 700; letter-spacing: 0.04em; margin: 0 0 6px; }
+    .splash-sub { font-size: 12px; color: #94A3B8; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 24px; }
+    .splash-bar-track {
+      width: 220px; height: 4px; background: rgba(255,255,255,0.08);
+      border-radius: 999px; overflow: hidden;
+    }
+    .splash-bar-fill {
+      width: 45%; height: 100%; border-radius: 999px;
+      background: linear-gradient(90deg, #10B981, #06B6D4);
+      animation: splashSlide 1.2s ease-in-out infinite alternate;
+    }
+    #app-splash-overlay[data-app="bobfwtools"] .splash-bar-fill {
+      background: linear-gradient(90deg, #F59E0B, #EF4444, #38BDF8);
+    }
+    @keyframes splashPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
+    @keyframes splashSlide { 0% { transform: translateX(-15%); } 100% { transform: translateX(135%); } }
+  </style>
+
+  <div id="app-splash-overlay" data-app="cloudspaceguard">
+    <div class="splash-logo-wrap">
+      <!-- Inline CloudSpaceGuard Vector Emblem -->
+      <svg viewBox="0 0 512 512" width="100%" height="100%">
+        <rect x="24" y="24" width="464" height="464" rx="108" fill="#0B1120" stroke="#10B981" stroke-width="10"/>
+        <path d="M256 96 L384 148 V252 C384 342 326 404 256 432 C186 404 128 342 128 252 V148 Z"
+              fill="rgba(16,185,129,0.15)" stroke="#06B6D4" stroke-width="14" stroke-linejoin="round"/>
+        <path d="M196 254 H316 A38 38 0 0 0 322 180 A58 58 0 0 0 212 168 A44 44 0 0 0 196 254 Z" fill="#F0FDFA"/>
+        <path d="M214 286 L244 316 L306 252" fill="none" stroke="#10B981" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <h1 class="splash-title">CLOUD SPACE GUARD</h1>
+    <div class="splash-sub" id="splash-status-text">Initializing SHA-256 Vault Ledger &amp; Telemetry...</div>
+    <div class="splash-bar-track"><div class="splash-bar-fill"></div></div>
+  </div>
+
+  <script>
+    window.dismissAppSplash = function () {
+      const el = document.getElementById("app-splash-overlay");
+      if (el) el.classList.add("splash-hidden");
+    };
+    window.addEventListener("DOMContentLoaded", () => {
+      setTimeout(window.dismissAppSplash, 900);
+    });
+  </script>
+  <!-- Top Header -->
+  <header class="sticky top-0 z-30 glass border-b border-slate-800/80 px-6 py-4">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 font-black text-lg tracking-tight">
+          CSG
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-xl font-bold tracking-tight text-white">Cloud Space Guard</h1>
+            <span class="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-medium" id="agent-status-badge">
+              Live Local Agent Connected
+            </span>
+          </div>
+          <p class="text-xs text-slate-400">
+            All-For-One Space Saver &amp; Cryptographic Multi-Cloud Offloader • Verify SHA-256 Before Delete
+          </p>
+        </div>
+      </div>
+
+      <!-- OS Profile Switcher -->
+      <div class="flex items-center gap-2 bg-slate-900/90 p-1.5 rounded-xl border border-slate-800">
+        <span class="text-xs text-slate-400 px-2">Platform Mode:</span>
+        <button onclick="setOsProfile('macos')" id="os-btn-macos" class="os-btn px-3 py-1.5 rounded-lg text-xs font-semibold transition">macOS</button>
+        <button onclick="setOsProfile('windows')" id="os-btn-windows" class="os-btn px-3 py-1.5 rounded-lg text-xs font-semibold transition">Windows</button>
+        <button onclick="setOsProfile('linux')" id="os-btn-linux" class="os-btn px-3 py-1.5 rounded-lg text-xs font-semibold transition">Linux</button>
+        <button onclick="setOsProfile('chromeos')" id="os-btn-chromeos" class="os-btn px-3 py-1.5 rounded-lg text-xs font-semibold transition">Chromebook</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-6 mt-6 space-y-6">
+    <!-- Smart Space Target Hero Banner -->
+    <section class="glass rounded-2xl p-6 shadow-xl">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+        <div class="lg:col-span-7 space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <span class="text-xs uppercase tracking-wider text-cyan-400 font-semibold">Smart Space Target Planner</span>
+              <h2 class="text-2xl font-bold text-white mt-0.5" id="hero-headline">
+                Reclaim Space Safely for Bootcamp, VMs &amp; Heavy Builds
+              </h2>
+            </div>
+            <button onclick="refreshLiveScan()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-cyan-300 border border-slate-700 transition flex items-center gap-1.5">
+              <span>↻</span> Re-Scan Disk Now
+            </button>
+          </div>
+
+          <!-- Progress Gauge -->
+          <div class="space-y-2">
+            <div class="flex justify-between text-sm">
+              <span class="text-slate-300">Current Free Space: <strong class="text-white text-base" id="free-gb-label">-- GB</strong> <span class="text-slate-400 text-xs" id="total-gb-label">(of -- GB total)</span></span>
+              <span class="text-cyan-300 font-semibold">Target Goal: <strong id="target-gb-label">74.0 GB Free</strong></span>
+            </div>
+            <div class="w-full h-4 bg-slate-900 rounded-full overflow-hidden border border-slate-800 relative">
+              <div id="free-space-bar" class="h-full progress-bar-shine transition-all duration-500" style="width: 15%"></div>
+            </div>
+            <div class="flex justify-between items-center text-xs text-slate-400 pt-1">
+              <span id="deficit-status-text">Calculating space deficit...</span>
+              <span id="projected-gain-text" class="text-emerald-400 font-semibold">Selected Reclaimable: +0.0 GB</span>
+            </div>
+          </div>
+
+          <!-- Slider + Auto-Select -->
+          <div class="pt-2 flex flex-wrap items-center gap-4">
+            <div class="flex-1 min-w-[220px]">
+              <label class="text-xs text-slate-400 block mb-1">Adjust Target Free Space (GB): <span id="slider-val-display" class="text-white font-bold">74 GB</span></label>
+              <input type="range" id="target-slider" min="15" max="200" step="1" value="74" oninput="onTargetSliderChange(this.value)" class="w-full accent-cyan-400 cursor-pointer" />
+            </div>
+            <button onclick="autoSelectForTarget()" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-semibold text-xs shadow-lg shadow-cyan-500/20 transition">
+              ⚡ Auto-Select Best Files &amp; Caches for Target
+            </button>
+          </div>
+        </div>
+
+        <!-- Right Card: Multi-Cloud Vault Selector -->
+        <div class="lg:col-span-5 bg-slate-900/90 rounded-xl p-4 border border-slate-800 space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold text-white">Active Cloud Destination Vault</h3>
+            <button onclick="toggleAddProviderModal(true)" class="text-xs text-cyan-400 hover:text-cyan-300 font-semibold">
+              + Connect 3rd-Party Cloud
+            </button>
+          </div>
+          <div id="provider-cards-list" class="space-y-2 max-h-56 overflow-y-auto pr-1">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Navigation Tabs -->
+    <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-3">
+      <div class="flex flex-wrap gap-2">
+        <button onclick="switchTab('offload')" id="tab-btn-offload" class="tab-btn px-4 py-2 rounded-xl text-sm font-semibold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+          1. Verify-Before-Delete Cloud Offload Queue
+        </button>
+        <button onclick="switchTab('caches')" id="tab-btn-caches" class="tab-btn px-4 py-2 rounded-xl text-sm font-semibold bg-slate-900 text-slate-300 border border-slate-800">
+          2. System Cache &amp; Project Build Cleaner
+        </button>
+        <button onclick="switchTab('ledger')" id="tab-btn-ledger" class="tab-btn px-4 py-2 rounded-xl text-sm font-semibold bg-slate-900 text-slate-300 border border-slate-800">
+          3. Verified Cloud Stubs &amp; 1-Click Restore
+        </button>
+        <button onclick="switchTab('cli')" id="tab-btn-cli" class="tab-btn px-4 py-2 rounded-xl text-sm font-semibold bg-slate-900 text-slate-300 border border-slate-800">
+          4. Cross-Platform CLI &amp; OS Commands
+        </button>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+          <input type="checkbox" id="leave-stub-checkbox" checked class="accent-cyan-400 rounded" />
+          Leave <code class="text-cyan-300">.cloudstub</code> receipt for 1-click restore
+        </label>
+      </div>
+    </div>
+
+    <!-- Notification Banner -->
+    <div id="toast-banner" class="hidden rounded-xl p-4 border text-sm font-medium"></div>
+
+    <!-- TAB 1: Verify-Before-Delete Offload Queue -->
+    <section id="tab-panel-offload" class="space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h3 class="text-lg font-bold text-white">Large Local Files &amp; Archives Ready for Cloud Offload</h3>
+          <p class="text-xs text-slate-400">
+            Every file is hashed with SHA-256 locally, uploaded/verified in your chosen Cloud Vault (Google Drive, iCloud Drive, S3/R2/B2), and only removed locally after the remote checksum matches 100%.
+          </p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="runBatchOffload(true)" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700">
+            🔍 Dry-Run Verify Selected
+          </button>
+          <button onclick="runBatchOffload(false)" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/20">
+            🛡️ Verify SHA-256 &amp; Offload Selected
+          </button>
+        </div>
+      </div>
+
+      <div class="glass rounded-2xl overflow-hidden">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="border-b border-slate-800 text-xs uppercase text-slate-400 bg-slate-900/60">
+              <th class="p-3.5 w-10"><input type="checkbox" id="select-all-files" onchange="toggleSelectAllFiles(this.checked)" class="accent-cyan-400" /></th>
+              <th class="p-3.5">File / Archive</th>
+              <th class="p-3.5">Size</th>
+              <th class="p-3.5">Cloud Safety Strategy</th>
+              <th class="p-3.5 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="candidates-table-body" class="divide-y divide-slate-800/70 text-sm">
+            <!-- Populated by JS -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TAB 2: System Cache & Dev Build Cleaner -->
+    <section id="tab-panel-caches" class="hidden space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h3 class="text-lg font-bold text-white">Reclaimable System, Browser &amp; Developer Caches</h3>
+          <p class="text-xs text-slate-400">
+            Clean non-destructive package caches (npm, pnpm, Cargo, Xcode DerivedData, Google caches, Playwright) or review heavy VM/Project build directories.
+          </p>
+        </div>
+      </div>
+      <div id="caches-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- Populated by JS -->
+      </div>
+    </section>
+
+    <!-- TAB 3: Verified Cloud Stubs & Restore Ledger -->
+    <section id="tab-panel-ledger" class="hidden space-y-4">
+      <div>
+        <h3 class="text-lg font-bold text-white">Cryptographic Verification Ledger &amp; 1-Click Cloud Restore</h3>
+        <p class="text-xs text-slate-400">
+          Complete audit log of every SHA-256 verified cloud offload and cache cleanup. Click Restore on any stubbed file to pull it back from Google Drive, iCloud Drive, or your 3rd-party vault.
+        </p>
+      </div>
+      <div class="glass rounded-2xl overflow-hidden">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="border-b border-slate-800 text-xs uppercase text-slate-400 bg-slate-900/60">
+              <th class="p-3.5">Time</th>
+              <th class="p-3.5">File / Target</th>
+              <th class="p-3.5">Cloud Destination / Action</th>
+              <th class="p-3.5">Size</th>
+              <th class="p-3.5">SHA-256 Proof</th>
+              <th class="p-3.5 text-right">Restore</th>
+            </tr>
+          </thead>
+          <tbody id="ledger-table-body" class="divide-y divide-slate-800/70 text-sm">
+            <!-- Populated by JS -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TAB 4: Cross-Platform CLI & OS Commands -->
+    <section id="tab-panel-cli" class="hidden space-y-4">
+      <div class="glass rounded-2xl p-6 space-y-4">
+        <h3 class="text-lg font-bold text-white">All-For-One Cross-Platform CLI &amp; OS Integration</h3>
+        <p class="text-xs text-slate-400">
+          Use <code class="text-cyan-300">space_guard_agent.py</code> across macOS, Windows, Linux, and Chromebooks (Crostini Linux) to automate space thresholds and cloud verification.
+        </p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+          <div class="bg-slate-950/90 p-4 rounded-xl border border-slate-800 space-y-2">
+            <div class="font-bold text-cyan-300">macOS (iCloud brctl + Google Drive Mount)</div>
+            <pre class="text-slate-300 overflow-x-auto"><code># Check disk &amp; cloud mounts for 74 GB Bootcamp goal
+python3 space_guard_agent.py status --target-gb 74
+
+# Verify SHA-256 &amp; offload file to Google Drive
+python3 space_guard_agent.py offload \
+  --file ~/Downloads/large_archive.zip \
+  --provider gdrive
+
+# Native macOS iCloud Drive eviction (keeps in iCloud)
+brctl evict ~/Library/Mobile\ Documents/com~apple~CloudDocs/big.mov</code></pre>
+          </div>
+          <div class="bg-slate-950/90 p-4 rounded-xl border border-slate-800 space-y-2">
+            <div class="font-bold text-emerald-300">Windows / Linux / Chromebook (ChromeOS)</div>
+            <pre class="text-slate-300 overflow-x-auto"><code># Chromebook (Crostini Linux) Google Drive Vault path:
+# /mnt/chromeos/GoogleDrive/MyDrive/CloudSpaceGuard_Vault
+
+# Windows PowerShell OneDrive / iCloud Pin Eviction:
+attrib +U -P "C:\Users\You\OneDrive\large_video.mp4"
+
+# Universal 3rd-Party Cloud (S3 / R2 / Backblaze B2 via rclone):
+rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal: Connect 3rd-Party Cloud Container -->
+  <div id="add-provider-modal" class="hidden fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+    <div class="glass rounded-2xl max-w-md w-full p-6 space-y-4 border border-slate-700">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-white">Connect 3rd-Party Cloud Container</h3>
+        <button onclick="toggleAddProviderModal(false)" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+      <p class="text-xs text-slate-400">
+        Add any Free or Paid Tier Cloud Vault (AWS S3, Cloudflare R2, Backblaze B2, Wasabi, Nextcloud, WebDAV, NAS, or External/Mounted Cloud Folder).
+      </p>
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block text-slate-300 mb-1">Provider Name</label>
+          <input id="new-prov-name" type="text" placeholder="e.g. Cloudflare R2 Archive Bucket" class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white" />
+        </div>
+        <div>
+          <label class="block text-slate-300 mb-1">Tier Type</label>
+          <select id="new-prov-tier" class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white">
+            <option value="Free Tier (10 GB - 15 GB)">Free Tier (10 GB – 15 GB)</option>
+            <option value="Paid Tier (100 GB - 2 TB+)">Paid Tier (100 GB – 2 TB+)</option>
+            <option value="Pay-As-You-Go Object Storage (S3/R2/B2)">Pay-As-You-Go Object Storage (S3 / R2 / B2)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-slate-300 mb-1">Local Mount Path or rclone/S3 URI</label>
+          <input id="new-prov-path" type="text" placeholder="e.g. /Users/bj23/Library/CloudStorage/Box-Box or rclone:r2-vault" class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white" />
+        </div>
+      </div>
+      <div class="flex justify-end gap-2 pt-2">
+        <button onclick="toggleAddProviderModal(false)" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold">Cancel</button>
+        <button onclick="submitNewProvider()" class="px-4 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold">Connect Vault</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = window.location.protocol === 'file:' ? 'http://127.0.0.1:7474' : '';
+    let state = {
+      osProfile: 'macos',
+      selectedProviderId: 'gdrive',
+      telemetry: {
+        total_gb: 396.0,
+        free_gb: 5.5,
+        used_gb: 390.5,
+        target_free_gb: 74.0,
+        deficit_gb: 68.5
+      },
+      providers: [],
+      candidates: [],
+      caches: [],
+      ledger: [],
+      selectedFiles: new Set()
+    };
+
+    function showToast(msg, isError = false) {
+      const el = document.getElementById('toast-banner');
+      el.className = `rounded-xl p-4 border text-sm font-medium ${
+        isError
+          ? 'bg-rose-500/15 border-rose-500/40 text-rose-200'
+          : 'bg-emerald-500/15 border-emerald-500/40 text-emerald-200'
+      }`;
+      el.textContent = msg;
+      el.classList.remove('hidden');
+      setTimeout(() => el.classList.add('hidden'), 7000);
+    }
+
+    function setOsProfile(prof) {
+      state.osProfile = prof;
+      ['macos', 'windows', 'linux', 'chromeos'].forEach(p => {
+        const btn = document.getElementById(`os-btn-${p}`);
+        if (p === prof) {
+          btn.className = 'os-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-cyan-500 text-slate-950 shadow';
+        } else {
+          btn.className = 'os-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white';
+        }
+      });
+      renderAll();
+    }
+
+    function switchTab(tab) {
+      ['offload', 'caches', 'ledger', 'cli'].forEach(t => {
+        document.getElementById(`tab-panel-${t}`).classList.toggle('hidden', t !== tab);
+        const btn = document.getElementById(`tab-btn-${t}`);
+        if (t === tab) {
+          btn.className = 'tab-btn px-4 py-2 rounded-xl text-sm font-semibold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40';
+        } else {
+          btn.className = 'tab-btn px-4 py-2 rounded-xl text-sm font-semibold bg-slate-900 text-slate-300 border border-slate-800';
+        }
+      });
+    }
+
+    async function refreshLiveScan() {
+      try {
+        const [statusRes, scanRes] = await Promise.all([
+          fetch(`${API_BASE}/api/status`),
+          fetch(`${API_BASE}/api/scan?min_mb=15`)
+        ]);
+        if (statusRes.ok && scanRes.ok) {
+          const statusData = await statusRes.json();
+          const scanData = await scanRes.json();
+          state.telemetry = scanData.telemetry || statusData.telemetry;
+          state.providers = statusData.providers || [];
+          state.caches = scanData.caches || [];
+          state.candidates = scanData.candidates || [];
+          state.ledger = scanData.ledger || [];
+          if (state.telemetry.os_profile) {
+            setOsProfile(state.telemetry.os_profile);
+          }
+          document.getElementById('target-slider').value = state.telemetry.target_free_gb || 74;
+          document.getElementById('agent-status-badge').textContent = 'Live Local Agent Connected';
+          renderAll();
+          if (window.dismissAppSplash) window.dismissAppSplash();
+        }
+      } catch (e) {
+        document.getElementById('agent-status-badge').textContent = 'Offline Standalone Mode';
+        renderAll();
+        if (window.dismissAppSplash) window.dismissAppSplash();
+      }
+    }
+
+    async function onTargetSliderChange(val) {
+      const target = parseFloat(val);
+      state.telemetry.target_free_gb = target;
+      state.telemetry.deficit_gb = Math.max(0, +(target - state.telemetry.free_gb).toFixed(2));
+      document.getElementById('slider-val-display').textContent = `${target} GB`;
+      renderTelemetry();
+      try {
+        await fetch(`${API_BASE}/api/target`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target_free_gb: target })
+        });
+      } catch (_) {}
+    }
+
+    function autoSelectForTarget() {
+      state.selectedFiles.clear();
+      let neededBytes = (state.telemetry.deficit_gb || 0) * (1024 ** 3);
+      for (const c of state.candidates) {
+        if (neededBytes <= 0) break;
+        state.selectedFiles.add(c.path);
+        neededBytes -= c.size_bytes;
+      }
+      renderCandidates();
+      renderTelemetry();
+      showToast(`Auto-selected ${state.selectedFiles.size} largest file(s) for SHA-256 Verified Cloud Offload. Check Tab 2 (System Caches) for additional space!`);
+    }
+
+    function toggleSelectAllFiles(checked) {
+      if (checked) {
+        state.candidates.forEach(c => state.selectedFiles.add(c.path));
+      } else {
+        state.selectedFiles.clear();
+      }
+      renderCandidates();
+      renderTelemetry();
+    }
+
+    function toggleFileSelection(path) {
+      if (state.selectedFiles.has(path)) {
+        state.selectedFiles.delete(path);
+      } else {
+        state.selectedFiles.add(path);
+      }
+      renderCandidates();
+      renderTelemetry();
+    }
+
+    function renderTelemetry() {
+      const t = state.telemetry;
+      document.getElementById('free-gb-label').textContent = `${t.free_gb} GB`;
+      document.getElementById('total-gb-label').textContent = `(of ${t.total_gb} GB total)`;
+      document.getElementById('target-gb-label').textContent = `${t.target_free_gb} GB Free`;
+      document.getElementById('slider-val-display').textContent = `${t.target_free_gb} GB`;
+
+      let selectedBytes = 0;
+      state.candidates.forEach(c => {
+        if (state.selectedFiles.has(c.path)) selectedBytes += c.size_bytes;
+      });
+      const selectedGb = +(selectedBytes / (1024 ** 3)).toFixed(2);
+      const totalCacheGb = +(state.caches.reduce((acc, c) => acc + c.size_bytes, 0) / (1024 ** 3)).toFixed(2);
+
+      document.getElementById('projected-gain-text').textContent =
+        `Selected Offload: +${selectedGb} GB | Reclaimable Caches: +${totalCacheGb} GB`;
+
+      const pct = Math.min(100, Math.max(4, Math.round((t.free_gb / Math.max(1, t.target_free_gb)) * 100)));
+      document.getElementById('free-space-bar').style.width = `${pct}%`;
+
+      const deficitEl = document.getElementById('deficit-status-text');
+      if (t.free_gb >= t.target_free_gb) {
+        deficitEl.innerHTML = `<span class="text-emerald-400 font-bold">✓ Target Met! You have ${t.free_gb} GB free.</span>`;
+      } else {
+        deficitEl.innerHTML = `Need <strong class="text-amber-300">${t.deficit_gb} GB more</strong> to reach ${t.target_free_gb} GB goal.`;
+      }
+    }
+
+    function renderProviders() {
+      const container = document.getElementById('provider-cards-list');
+      if (!state.providers.length) {
+        container.innerHTML = `<div class="text-xs text-slate-400">Scanning cloud mounts...</div>`;
+        return;
+      }
+      container.innerHTML = state.providers.map(p => {
+        const isSel = p.id === state.selectedProviderId;
+        return `
+          <div onclick="state.selectedProviderId='${p.id}'; renderProviders();"
+               class="p-2.5 rounded-xl border cursor-pointer transition flex items-center justify-between gap-2 ${
+                 isSel ? 'bg-cyan-500/15 border-cyan-400' : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
+               }">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-bold text-white truncate">${p.name}</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded ${
+                  p.connected ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'
+                }">${p.connected ? 'Ready' : 'Configurable'}</span>
+              </div>
+              <div class="text-[11px] text-slate-400 truncate">${p.account_hint} • ${p.tier}</div>
+            </div>
+            <input type="radio" name="active_provider" ${isSel ? 'checked' : ''} class="accent-cyan-400" />
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderCandidates() {
+      const tbody = document.getElementById('candidates-table-body');
+      if (!state.candidates.length) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="5" class="p-8 text-center text-slate-400 text-sm">
+              No standalone files &gt; 15 MB found in standard user folders, or check <strong>Tab 2: System Cache &amp; Project Build Cleaner</strong> where <strong>35+ GB</strong> of reclaimable caches and containers were detected!
+            </td>
+          </tr>
+        `;
+        return;
+      }
+      tbody.innerHTML = state.candidates.map(c => {
+        const checked = state.selectedFiles.has(c.path);
+        const safePath = c.path.replace(/'/g, "\\'");
+        return `
+          <tr class="hover:bg-slate-900/40 transition">
+            <td class="p-3.5">
+              <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleFileSelection('${safePath}')" class="accent-cyan-400" />
+            </td>
+            <td class="p-3.5">
+              <div class="font-semibold text-white">${c.name}</div>
+              <div class="text-xs text-slate-400 font-mono truncate max-w-md">${c.path}</div>
+            </td>
+            <td class="p-3.5 font-mono text-xs text-cyan-300 font-semibold">
+              ${c.size_gb >= 0.1 ? c.size_gb + ' GB' : c.size_mb + ' MB'}
+            </td>
+            <td class="p-3.5">
+              <span class="text-xs px-2.5 py-1 rounded-lg bg-slate-800 text-slate-200 border border-slate-700">
+                ${c.recommended_action}
+              </span>
+            </td>
+            <td class="p-3.5 text-right space-x-1.5">
+              <button onclick="offloadSingle('${safePath}', true)" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300">
+                Hash Check
+              </button>
+              <button onclick="offloadSingle('${safePath}', false)" class="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white">
+                Verify &amp; Offload
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function renderCaches() {
+      const grid = document.getElementById('caches-grid');
+      if (!state.caches.length) {
+        grid.innerHTML = `<div class="text-sm text-slate-400">No large system caches detected.</div>`;
+        return;
+      }
+      grid.innerHTML = state.caches.map(item => {
+        const isSafe = item.safe_level === 'safe';
+        return `
+          <div class="glass rounded-2xl p-5 flex flex-col justify-between gap-4 border ${
+            isSafe ? 'border-slate-800' : 'border-amber-500/30'
+          }">
+            <div class="space-y-2">
+              <div class="flex items-start justify-between gap-2">
+                <div>
+                  <span class="text-[11px] uppercase tracking-wider font-bold ${
+                    isSafe ? 'text-emerald-400' : 'text-amber-400'
+                  }">${item.category}</span>
+                  <h4 class="text-base font-bold text-white">${item.name}</h4>
+                </div>
+                <span class="text-sm font-mono font-black px-3 py-1 rounded-xl bg-slate-900 border border-slate-700 text-cyan-300">
+                  ${item.size_gb >= 0.1 ? item.size_gb + ' GB' : item.size_mb + ' MB'}
+                </span>
+              </div>
+              <p class="text-xs text-slate-400">${item.description}</p>
+              <div class="text-[11px] font-mono text-slate-300 bg-slate-950/80 px-3 py-1.5 rounded-lg border border-slate-800 truncate">
+                Path: ${item.path}
+              </div>
+            </div>
+            <div class="flex items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
+              <code class="text-[11px] text-slate-400 truncate">${item.clean_cmd}</code>
+              ${
+                isSafe
+                  ? `<button onclick="cleanCacheById('${item.id}')" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shrink-0">
+                       🧹 Clean Safe Cache
+                     </button>`
+                  : `<span class="text-xs text-amber-300 font-semibold shrink-0">Review CLI Command</span>`
+              }
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderLedger() {
+      const tbody = document.getElementById('ledger-table-body');
+      if (!state.ledger.length) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6" class="p-8 text-center text-slate-400 text-sm">
+              No cloud offloads or cache cleanups recorded yet in this session.
+            </td>
+          </tr>
+        `;
+        return;
+      }
+      tbody.innerHTML = state.ledger.map(entry => {
+        const mb = (entry.size_bytes / (1024 ** 2)).toFixed(1);
+        const stub = entry.stub_path ? entry.stub_path.replace(/'/g, "\\'") : '';
+        return `
+          <tr class="hover:bg-slate-900/40">
+            <td class="p-3.5 text-xs text-slate-400 font-mono">${entry.timestamp}</td>
+            <td class="p-3.5 font-semibold text-white">${entry.file_name}</td>
+            <td class="p-3.5 text-xs text-slate-300 font-mono truncate max-w-xs">${entry.cloud_destination}</td>
+            <td class="p-3.5 text-xs font-mono text-cyan-300">${mb} MB</td>
+            <td class="p-3.5 text-xs font-mono text-emerald-400">${(entry.sha256 || '').slice(0, 16)}...</td>
+            <td class="p-3.5 text-right">
+              ${
+                stub
+                  ? `<button onclick="restoreStub('${stub}')" class="px-3 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/30 text-xs font-semibold">
+                       ↶ Restore Local
+                     </button>`
+                  : `<span class="text-xs text-slate-500">Completed</span>`
+              }
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    async function offloadSingle(filePath, dryRun) {
+      const leaveStub = document.getElementById('leave-stub-checkbox').checked;
+      try {
+        const res = await fetch(`${API_BASE}/api/offload`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            file_path: filePath,
+            provider_id: state.selectedProviderId,
+            leave_stub: leaveStub,
+            dry_run: dryRun
+          })
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          showToast(`Verification Blocked: ${data.error}`, true);
+          return;
+        }
+        if (dryRun) {
+          showToast(`Dry-Run SHA-256 Verified: ${data.local_sha256.slice(0, 20)}... → Ready for ${data.cloud_destination}`);
+        } else {
+          showToast(`✓ Verified SHA-256 & Offloaded ${data.entry.file_name} to Cloud Vault!`);
+          await refreshLiveScan();
+        }
+      } catch (e) {
+        showToast(`Error contacting local agent: ${e.message}`, true);
+      }
+    }
+
+    async function runBatchOffload(dryRun) {
+      if (!state.selectedFiles.size) {
+        showToast('Select at least one file first (or click Auto-Select).', true);
+        return;
+      }
+      for (const filePath of Array.from(state.selectedFiles)) {
+        await offloadSingle(filePath, dryRun);
+      }
+    }
+
+    async function cleanCacheById(cacheId) {
+      try {
+        const res = await fetch(`${API_BASE}/api/clean-cache`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cache_id: cacheId })
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          showToast(data.error, true);
+          return;
+        }
+        showToast(`✓ Cleaned cache and reclaimed ${data.freed_mb} MB!`);
+        await refreshLiveScan();
+      } catch (e) {
+        showToast(`Failed to clean cache: ${e.message}`, true);
+      }
+    }
+
+    async function restoreStub(stubPath) {
+      try {
+        const res = await fetch(`${API_BASE}/api/restore`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ stub_path: stubPath })
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          showToast(data.error, true);
+          return;
+        }
+        showToast(`✓ Restored ${data.entry.file_name} and verified SHA-256 integrity!`);
+        await refreshLiveScan();
+      } catch (e) {
+        showToast(`Restore error: ${e.message}`, true);
+      }
+    }
+
+    function toggleAddProviderModal(show) {
+      document.getElementById('add-provider-modal').classList.toggle('hidden', !show);
+    }
+
+    async function submitNewProvider() {
+      const name = document.getElementById('new-prov-name').value.trim();
+      const tier = document.getElementById('new-prov-tier').value;
+      const vault_path = document.getElementById('new-prov-path').value.trim();
+      if (!name || !vault_path) {
+        showToast('Please enter both a Provider Name and a Vault Path / URI.', true);
+        return;
+      }
+      try {
+        const res = await fetch(`${API_BASE}/api/add-provider`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, tier, vault_path, account_hint: 'Custom 3rd-Party Container' })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          state.providers = data.providers;
+          toggleAddProviderModal(false);
+          renderProviders();
+          showToast(`Connected 3rd-party cloud container: ${name}`);
+        }
+      } catch (e) {
+        showToast(`Could not save provider: ${e.message}`, true);
+      }
+    }
+
+    function renderAll() {
+      renderTelemetry();
+      renderProviders();
+      renderCandidates();
+      renderCaches();
+      renderLedger();
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      setOsProfile('macos');
+      refreshLiveScan();
+    });
+  </script>
+</body>
+</html>

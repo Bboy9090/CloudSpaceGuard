@@ -1,0 +1,30 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# Build and Application bundles
+*.app/
+dist/
+build/
+*.egg-info/
+AppIcon.iconset/
+
+# OS and temporary files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.log
+*.tmp
+
+# Local state & ledger
+.cloud-space-guard/
