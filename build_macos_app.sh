@@ -205,6 +205,8 @@ cat > "${CSG_DIR}/store_packaging/macos/entitlements.desktop.plist" <<EOF
 </dict>
 </plist>
 EOF
+xattr -cr "${APP_BUNDLE}"
+find "${APP_BUNDLE}" -name "._*" -delete
 codesign --force --deep --options runtime --entitlements "${CSG_DIR}/store_packaging/macos/entitlements.desktop.plist" --sign - "${APP_BUNDLE}"
 codesign --verify --deep --strict --verbose=2 "${APP_BUNDLE}"
 rm -rf "/Applications/${APP_NAME}.app"

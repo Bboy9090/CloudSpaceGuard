@@ -257,6 +257,8 @@ class TestCloudSpaceGuardEndToEnd(unittest.TestCase):
         self.assertIn("NSPrivacyAccessedAPICategoryDiskSpace", api_types)
         self.assertIn("NSPrivacyAccessedAPICategoryFileTimestamp", api_types)
 
+        subprocess.run(["xattr", "-cr", str(app_bundle)], capture_output=True)
+        subprocess.run(["find", str(app_bundle), "-name", "._*", "-delete"], capture_output=True)
         verify_proc = subprocess.run(
             ["codesign", "--verify", "--deep", "--strict", str(app_bundle)],
             capture_output=True,

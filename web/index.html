@@ -299,14 +299,25 @@
             </div>
           </div>
 
-          <!-- Slider + Auto-Select -->
+          <!-- Preset Target Pills & 1-Click Smart Clean -->
+          <div class="flex flex-wrap items-center gap-2 pt-1">
+            <span class="text-xs text-slate-400 mr-1">Quick Goal:</span>
+            <button onclick="setTargetPreset(50)" class="preset-pill px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 border border-slate-700 transition">50 GB Free</button>
+            <button onclick="setTargetPreset(74)" class="preset-pill px-3 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-xs text-cyan-300 border border-cyan-500/40 font-bold transition">74 GB (Bootcamp Ready)</button>
+            <button onclick="setTargetPreset(100)" class="preset-pill px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 border border-slate-700 transition">100 GB Free</button>
+          </div>
+
+          <!-- Slider + 1-Click Actions -->
           <div class="pt-2 flex flex-wrap items-center gap-4">
             <div class="flex-1 min-w-[220px]">
               <label class="text-xs text-slate-400 block mb-1">Adjust Target Free Space (GB): <span id="slider-val-display" class="text-white font-bold">74 GB</span></label>
               <input type="range" id="target-slider" min="15" max="200" step="1" value="74" oninput="onTargetSliderChange(this.value)" class="w-full accent-cyan-400 cursor-pointer" />
             </div>
+            <button onclick="cleanAllSafeCaches()" id="btn-1click-clean" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-500/25 transition flex items-center gap-2">
+              <span>✨</span> 1-Click Smart Clean All Safe Caches
+            </button>
             <button onclick="autoSelectForTarget()" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-semibold text-xs shadow-lg shadow-cyan-500/20 transition">
-              ⚡ Auto-Select Best Files &amp; Caches for Target
+              ⚡ Auto-Select For Target
             </button>
           </div>
         </div>
@@ -562,32 +573,50 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
     }
 
     async function refreshLiveScan() {
+      // 1. Instant Initial Load: Status, Live Telemetry, System Caches, and Ledger
       try {
-        const [statusRes, scanRes] = await Promise.all([
-          fetch(`${API_BASE}/api/status`),
-          fetch(`${API_BASE}/api/scan?min_mb=15`)
+        const [statusRes, cacheRes, ledgerRes] = await Promise.all([
+          fetch(API_BASE + '/api/status'),
+          fetch(API_BASE + '/api/caches'),
+          fetch(API_BASE + '/api/ledger')
         ]);
-        if (statusRes.ok && scanRes.ok) {
+        if (statusRes.ok) {
           const statusData = await statusRes.json();
-          const scanData = await scanRes.json();
-          state.telemetry = scanData.telemetry || statusData.telemetry;
+          state.telemetry = statusData.telemetry || state.telemetry;
           state.providers = statusData.providers || [];
-          state.caches = scanData.caches || [];
-          state.candidates = scanData.candidates || [];
-          state.ledger = scanData.ledger || [];
-          if (state.telemetry.os_profile) {
-            setOsProfile(state.telemetry.os_profile);
-          }
+          if (state.telemetry.os_profile) setOsProfile(state.telemetry.os_profile);
           document.getElementById('target-slider').value = state.telemetry.target_free_gb || 74;
           document.getElementById('agent-status-badge').textContent = 'Live Local Agent Connected';
-          renderAll();
-          if (window.dismissAppSplash) window.dismissAppSplash();
         }
+        if (cacheRes && cacheRes.ok) {
+          const cacheData = await cacheRes.json();
+          state.caches = cacheData.caches || [];
+        }
+        if (ledgerRes && ledgerRes.ok) {
+          const ledgerData = await ledgerRes.json();
+          state.ledger = ledgerData.ledger || [];
+        }
+        renderAll();
+        if (window.dismissAppSplash) window.dismissAppSplash();
       } catch (e) {
         document.getElementById('agent-status-badge').textContent = 'Offline Standalone Mode';
         renderAll();
         if (window.dismissAppSplash) window.dismissAppSplash();
       }
+
+      // 2. Progressive Load: Offload candidate files in background
+      try {
+        const candRes = await fetch(API_BASE + '/api/candidates?min_mb=25');
+        if (candRes.ok) {
+          const candData = await candRes.json();
+          state.candidates = candData.candidates || [];
+          renderCandidates();
+          renderTelemetry();
+        }
+      } catch (e) {
+        console.warn('Candidate load note:', e);
+      }
+    }
     }
 
     async function onTargetSliderChange(val) {
@@ -855,6 +884,43 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       }
       for (const filePath of Array.from(state.selectedFiles)) {
         await offloadSingle(filePath, dryRun);
+      }
+    }
+
+    function setTargetPreset(gb) {
+      const slider = document.getElementById('target-slider');
+      if (slider) {
+        slider.value = gb;
+        onTargetSliderChange(gb);
+      }
+    }
+
+    async function cleanAllSafeCaches() {
+      const btn = document.getElementById('btn-1click-clean');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span>⏳</span> Cleaning Safe Caches...';
+      }
+      try {
+        const res = await fetch(, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Content-Length': '2' },
+          body: '{}'
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showToast();
+          await refreshLiveScan();
+        } else {
+          showToast(, true);
+        }
+      } catch (e) {
+        showToast(, true);
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>✨</span> 1-Click Smart Clean All Safe Caches';
+        }
       }
     }
 

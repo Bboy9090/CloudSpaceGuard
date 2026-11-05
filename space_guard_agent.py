@@ -23,6 +23,7 @@ import argparse
 import datetime
 import hashlib
 import http.server
+import time
 import json
 import os
 import platform
@@ -311,7 +312,15 @@ def discover_project_build_caches() -> List[Path]:
     return found
 
 
-def scan_system_caches() -> List[Dict[str, Any]]:
+_CACHE_TIMESTAMP = 0.0
+_CACHED_CACHES: List[Dict[str, Any]] = []
+_CACHED_CANDIDATES: List[Dict[str, Any]] = []
+
+def scan_system_caches(force_refresh: bool = False) -> List[Dict[str, Any]]:
+    global _CACHE_TIMESTAMP, _CACHED_CACHES
+    now = time.time()
+    if not force_refresh and _CACHED_CACHES and (now - _CACHE_TIMESTAMP < 60.0):
+        return _CACHED_CACHES
     home = Path.home()
     candidates = [
         {
@@ -463,10 +472,15 @@ def scan_system_caches() -> List[Dict[str, Any]]:
             })
 
     results.sort(key=lambda x: x["size_bytes"], reverse=True)
+    _CACHED_CACHES = results
+    _CACHE_TIMESTAMP = time.time()
     return results
 
 
-def scan_offload_candidates(min_size_mb: float = 25.0) -> List[Dict[str, Any]]:
+def scan_offload_candidates(min_size_mb: float = 25.0, force_refresh: bool = False) -> List[Dict[str, Any]]:
+    global _CACHED_CANDIDATES
+    if not force_refresh and _CACHED_CANDIDATES:
+        return _CACHED_CANDIDATES
     home = Path.home()
     min_bytes = int(min_size_mb * 1024 * 1024)
     search_roots = [
@@ -488,7 +502,15 @@ def scan_offload_candidates(min_size_mb: float = 25.0) -> List[Dict[str, Any]]:
             for proj in sorted(projects_dir.iterdir()):
                 if not proj.is_dir() or proj.is_symlink() or proj.name.startswith("."):
                     continue
-                sz = dir_size_bytes(proj)
+                try:
+                    # Quick du measurement with strict timeout to keep UI instant
+                    res = subprocess.run(["du", "-sk", str(proj)], capture_output=True, text=True, timeout=0.8)
+                    if res.returncode == 0 and res.stdout:
+                        sz = int(res.stdout.split()[0]) * 1024
+                    else:
+                        continue
+                except Exception:
+                    continue
                 if sz >= min_bytes:
                     st = proj.stat()
                     candidates.append({
@@ -498,10 +520,13 @@ def scan_offload_candidates(min_size_mb: float = 25.0) -> List[Dict[str, Any]]:
                         "size_bytes": sz,
                         "size_gb": round(sz / (1024 ** 3), 2),
                         "size_mb": round(sz / (1024 ** 2), 1),
+                        "size_formatted": f"{round(sz / (1024 ** 3), 2)} GB",
                         "modified": datetime.datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M"),
                         "already_in_cloud": None,
                         "recommended_action": "Archive (.tar.gz) + SHA-256 Verify & Offload to Cloud Vault",
                     })
+                    if len(candidates) >= 20:
+                        break
         except OSError:
             pass
 
@@ -511,10 +536,18 @@ def scan_offload_candidates(min_size_mb: float = 25.0) -> List[Dict[str, Any]]:
             continue
         try:
             for dirpath, dirnames, filenames in os.walk(root):
+                # Prune build artifacts, index stores, and version control directories
                 dirnames[:] = [
                     d for d in dirnames
-                    if d not in {".git", "node_modules", "target", "DerivedData", "__pycache__", ".Trash", "CloudSpaceGuard_Vault"}
+                    if not d.startswith(".") and d not in {
+                        "node_modules", "target", "build", "DerivedData", "__pycache__",
+                        "CloudSpaceGuard_Vault", "Pods", "Library", "venv", ".venv", "dist"
+                    }
                 ]
+                # Enforce max depth of 4 to keep search instantaneous
+                rel_depth = len(Path(dirpath).relative_to(root).parts)
+                if rel_depth >= 4:
+                    dirnames.clear()
                 for fname in filenames:
                     if fname.endswith(".cloudstub") or fname.startswith(".DS_Store"):
                         continue
@@ -536,6 +569,7 @@ def scan_offload_candidates(min_size_mb: float = 25.0) -> List[Dict[str, Any]]:
                             "size_bytes": st.st_size,
                             "size_gb": round(st.st_size / (1024 ** 3), 2),
                             "size_mb": round(st.st_size / (1024 ** 2), 1),
+                            "size_formatted": f"{round(st.st_size / (1024 ** 2), 1)} MB",
                             "modified": datetime.datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M"),
                             "already_in_cloud": "icloud" if in_icloud else ("gdrive" if in_gdrive else None),
                             "recommended_action": (
@@ -552,6 +586,7 @@ def scan_offload_candidates(min_size_mb: float = 25.0) -> List[Dict[str, Any]]:
             continue
 
     candidates.sort(key=lambda x: x["size_bytes"], reverse=True)
+    _CACHED_CANDIDATES = candidates
     return candidates
 
 
@@ -867,8 +902,11 @@ def clean_safe_cache(cache_id: str) -> Dict[str, Any]:
                         child.unlink()
                     except OSError:
                         pass
-        after_bytes = dir_size_bytes(path)
-        freed_bytes = max(0, before_bytes - after_bytes)
+        # Invalidate in-memory cache so subsequent reads see freshly freed disk
+        global _CACHE_TIMESTAMP, _CACHED_CACHES
+        _CACHE_TIMESTAMP = 0.0
+        _CACHED_CACHES = []
+        freed_bytes = before_bytes
         entry = {
             "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
             "action": "cache_cleaned",
@@ -890,11 +928,7 @@ def clean_safe_cache(cache_id: str) -> Dict[str, Any]:
         return {"ok": False, "error": str(exc)}
 
 
-class SpaceGuardRequestHandler(http.server.SimpleHTTPRequestHandler):
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        web_dir = Path(__file__).resolve().parent / "web"
-        super().__init__(*args, directory=str(web_dir), **kwargs)
-
+class SpaceGuardRequestHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: Any) -> None:
         pass
 
@@ -928,14 +962,22 @@ class SpaceGuardRequestHandler(http.server.SimpleHTTPRequestHandler):
         return True
 
     def _send_json(self, payload: Any, status: int = 200) -> None:
-        body = json.dumps(payload).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.write(body)
+            self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def do_OPTIONS(self) -> None:
         if not self._guard_browser_boundary():
@@ -972,11 +1014,38 @@ class SpaceGuardRequestHandler(http.server.SimpleHTTPRequestHandler):
             })
             return
 
+        if parsed.path == "/api/caches":
+            self._send_json({"ok": True, "caches": scan_system_caches()})
+            return
+
+        if parsed.path == "/api/candidates":
+            min_mb = float(qs.get("min_mb", ["25"])[0])
+            self._send_json({"ok": True, "candidates": scan_offload_candidates(min_size_mb=min_mb)})
+            return
+
         if parsed.path == "/api/ledger":
             self._send_json({"ok": True, "ledger": load_ledger()})
             return
 
-        return super().do_GET()
+                # Static file fallback
+        web_dir = Path(__file__).resolve().parent / "web"
+        rel = parsed.path.lstrip("/") or "index.html"
+        target_file = (web_dir / rel).resolve()
+        if str(target_file).startswith(str(web_dir)) and target_file.is_file():
+            content_type = "text/html"
+            if rel.endswith(".css"): content_type = "text/css"
+            elif rel.endswith(".js"): content_type = "application/javascript"
+            elif rel.endswith(".svg"): content_type = "image/svg+xml"
+            elif rel.endswith(".png"): content_type = "image/png"
+            data = target_file.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+
+        self._send_json({"ok": False, "error": "Not found"}, status=404)
 
     def do_POST(self) -> None:
         if not self._guard_browser_boundary():
@@ -1055,13 +1124,35 @@ class SpaceGuardRequestHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json(res, status=200 if res.get("ok") else 400)
             return
 
+        if parsed.path == "/api/clean-all-safe":
+            caches = scan_system_caches()
+            cleaned = []
+            total_freed_mb = 0.0
+            for c in caches:
+                if c.get("safe_level") == "safe" and c.get("size_mb", 0) > 0:
+                    r = clean_safe_cache(c["id"])
+                    if r.get("ok"):
+                        cleaned.append(c["name"])
+                        total_freed_mb += r.get("freed_mb", 0.0)
+            self._send_json({
+                "ok": True,
+                "cleaned_count": len(cleaned),
+                "cleaned_names": cleaned,
+                "freed_mb": round(total_freed_mb, 2),
+                "telemetry": get_disk_telemetry()
+            })
+            return
+
         self._send_json({"ok": False, "error": "Unknown endpoint"}, status=404)
 
 
+class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
 def run_server(port: int = DEFAULT_PORT) -> None:
     ensure_state_dir()
-    socketserver.TCPServer.allow_reuse_address = True
-    with socketserver.TCPServer(("127.0.0.1", port), SpaceGuardRequestHandler) as httpd:
+    with ThreadedTCPServer(("127.0.0.1", port), SpaceGuardRequestHandler) as httpd:
         print(f"==================================================================")
         print(f"  Cloud Space Guard v{APP_VERSION} — Cross-Platform Space Saver")
         print(f"  OS Profile : {detect_os_profile().upper()} ({platform.node()})")
