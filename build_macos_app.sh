@@ -1,7 +1,7 @@
 #!/bin/zsh
 set -e
 
-CSG_DIR="/Users/bj23/Documents/antigravity/cloud-space-guard"
+CSG_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_NAME="CloudSpaceGuard"
 APP_BUNDLE="${CSG_DIR}/${APP_NAME}.app"
 CONTENTS_DIR="${APP_BUNDLE}/Contents"
