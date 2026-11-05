@@ -15,6 +15,7 @@ import subprocess
 import tarfile
 import tempfile
 import unittest
+import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -153,6 +154,62 @@ class TestCloudSpaceGuardEndToEnd(unittest.TestCase):
                 self.assertEqual(resp.status, 200)
                 data = json.loads(resp.read().decode("utf-8"))
                 self.assertTrue(data["ok"])
+                self.assertIsNone(resp.headers.get("Access-Control-Allow-Origin"))
+
+            same_origin = urllib.request.Request(
+                f"http://127.0.0.1:{port}/api/target",
+                data=json.dumps({"target_free_gb": 73.0}).encode("utf-8"),
+                headers={
+                    "Content-Type": "application/json",
+                    "Origin": f"http://127.0.0.1:{port}",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(same_origin, timeout=5) as resp:
+                self.assertEqual(resp.status, 200)
+                data = json.loads(resp.read().decode("utf-8"))
+                self.assertTrue(data["ok"])
+                self.assertEqual(data["telemetry"]["target_free_gb"], 73.0)
+
+            hostile_origin = urllib.request.Request(
+                f"http://127.0.0.1:{port}/api/target",
+                data=json.dumps({"target_free_gb": 1.0}).encode("utf-8"),
+                headers={
+                    "Content-Type": "application/json",
+                    "Origin": "https://evil.example",
+                },
+                method="POST",
+            )
+            with self.assertRaises(urllib.error.HTTPError) as blocked_origin:
+                urllib.request.urlopen(hostile_origin, timeout=5)
+            self.assertEqual(blocked_origin.exception.code, 403)
+            self.assertEqual(csg.load_config()["target_free_gb"], 73.0)
+
+            hostile_host = urllib.request.Request(
+                f"http://127.0.0.1:{port}/api/status",
+                headers={"Host": "attacker.example"},
+            )
+            with self.assertRaises(urllib.error.HTTPError) as blocked_host:
+                urllib.request.urlopen(hostile_host, timeout=5)
+            self.assertEqual(blocked_host.exception.code, 403)
+
+            import http.client
+
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+            conn.request(
+                "POST",
+                "/api/target",
+                body=b"{}",
+                headers={
+                    "Content-Type": "application/json",
+                    "Content-Length": str(csg.MAX_HTTP_BODY_BYTES + 1),
+                    "Origin": f"http://127.0.0.1:{port}",
+                },
+            )
+            response = conn.getresponse()
+            self.assertEqual(response.status, 413)
+            response.read()
+            conn.close()
         finally:
             server.shutdown()
             server.server_close()

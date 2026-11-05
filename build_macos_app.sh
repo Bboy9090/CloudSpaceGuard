@@ -97,17 +97,35 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         setupMenu()
 
-        if let resPath = Bundle.main.resourcePath {
-            let webDirURL = URL(fileURLWithPath: (resPath as NSString).appendingPathComponent("web"))
-            let indexURL = webDirURL.appendingPathComponent("index.html")
-            if FileManager.default.fileExists(atPath: indexURL.path) {
-                self.webView.loadFileURL(indexURL, allowingReadAccessTo: webDirURL)
-            }
+        loadLocalDashboardWhenReady(attempt: 0)
+    }
+
+    func loadLocalDashboardWhenReady(attempt: Int) {
+        guard let url = URL(string: "http://127.0.0.1:7474/") else { return }
+        if attempt >= 20 {
+            let html = """
+            <html><body style="background:#0b1120;color:white;font-family:-apple-system;padding:32px">
+            <h2>Cloud Space Guard backend did not start.</h2>
+            <p>Quit the app, verify Python 3 is available, and relaunch.</p>
+            </body></html>
+            """
+            webView.loadHTMLString(html, baseURL: nil)
+            return
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            self.webView.evaluateJavaScript("if (typeof refreshLiveScan === 'function') refreshLiveScan();", completionHandler: nil)
-        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 0.5
+        URLSession.shared.dataTask(with: request) { _, response, _ in
+            if let http = response as? HTTPURLResponse, http.statusCode == 200 {
+                DispatchQueue.main.async {
+                    self.webView.load(URLRequest(url: url))
+                }
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    self.loadLocalDashboardWhenReady(attempt: attempt + 1)
+                }
+            }
+        }.resume()
     }
 
     func setupMenu() {
