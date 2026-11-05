@@ -38,6 +38,7 @@ from typing import Any, Dict, List, Optional
 
 APP_VERSION = "1.1.0"
 DEFAULT_PORT = 7474
+MAX_HTTP_BODY_BYTES = 1024 * 1024
 STATE_DIR = Path.home() / ".cloud-space-guard"
 CONFIG_FILE = STATE_DIR / "config.json"
 LEDGER_FILE = STATE_DIR / "ledger.json"
@@ -897,21 +898,55 @@ class SpaceGuardRequestHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, format: str, *args: Any) -> None:
         pass
 
+    def _server_port(self) -> int:
+        return int(self.server.server_address[1])
+
+    def _request_host_allowed(self) -> bool:
+        raw_host = self.headers.get("Host", "").strip().lower()
+        if not raw_host:
+            return False
+        host = raw_host.rsplit(":", 1)[0] if ":" in raw_host else raw_host
+        return host in {"127.0.0.1", "localhost"}
+
+    def _request_origin_allowed(self) -> bool:
+        origin = self.headers.get("Origin")
+        if not origin:
+            return True
+        port = self._server_port()
+        return origin.rstrip("/") in {
+            f"http://127.0.0.1:{port}",
+            f"http://localhost:{port}",
+        }
+
+    def _guard_browser_boundary(self) -> bool:
+        if not self._request_host_allowed():
+            self._send_json({"ok": False, "error": "Invalid localhost Host header"}, status=403)
+            return False
+        if not self._request_origin_allowed():
+            self._send_json({"ok": False, "error": "Cross-origin localhost API access denied"}, status=403)
+            return False
+        return True
+
     def _send_json(self, payload: Any, status: int = 200) -> None:
         body = json.dumps(payload).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
     def do_OPTIONS(self) -> None:
-        self._send_json({"ok": True})
+        if not self._guard_browser_boundary():
+            return
+        self.send_response(204)
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
 
     def do_GET(self) -> None:
+        if not self._guard_browser_boundary():
+            return
         parsed = urllib.parse.urlparse(self.path)
         qs = urllib.parse.parse_qs(parsed.query)
 
@@ -944,13 +979,34 @@ class SpaceGuardRequestHandler(http.server.SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self) -> None:
+        if not self._guard_browser_boundary():
+            return
+
         parsed = urllib.parse.urlparse(self.path)
-        length = int(self.headers.get("Content-Length", "0"))
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            self._send_json({"ok": False, "error": "Invalid Content-Length"}, status=400)
+            return
+
+        if length < 0:
+            self._send_json({"ok": False, "error": "Invalid Content-Length"}, status=400)
+            return
+        if length > MAX_HTTP_BODY_BYTES:
+            self._send_json({"ok": False, "error": "Request body too large"}, status=413)
+            return
+        if length > 0:
+            content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+            if content_type != "application/json":
+                self._send_json({"ok": False, "error": "POST requests require application/json"}, status=415)
+                return
+
         raw_body = self.rfile.read(length).decode("utf-8") if length > 0 else "{}"
         try:
             data = json.loads(raw_body)
         except Exception:
-            data = {}
+            self._send_json({"ok": False, "error": "Malformed JSON request body"}, status=400)
+            return
 
         if parsed.path == "/api/target":
             cfg = load_config()
