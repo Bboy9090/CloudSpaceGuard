@@ -1,0 +1,51 @@
+name: CloudSpaceGuard Safety and Store Baseline
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  portable-safety:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile Python sources
+        run: python -m py_compile space_guard_agent.py test_store_audit.py
+      - name: Run portable cryptographic and store-contract tests
+        run: |
+          python -m unittest -v \
+            test_store_audit.TestCloudSpaceGuardEndToEnd.test_01_telemetry_and_target_math \
+            test_store_audit.TestCloudSpaceGuardEndToEnd.test_02_provider_discovery \
+            test_store_audit.TestCloudSpaceGuardEndToEnd.test_03_single_file_verify_offload_and_restore \
+            test_store_audit.TestCloudSpaceGuardEndToEnd.test_04_directory_archive_offload_and_restore \
+            test_store_audit.TestCloudSpaceGuardEndToEnd.test_05_tampered_cloud_file_blocks_restore \
+            test_store_audit.TestCloudSpaceGuardEndToEnd.test_06_live_http_api_endpoints \
+            test_store_audit.TestCloudSpaceGuardEndToEnd.test_07_tar_slip_path_traversal_blocked \
+            test_store_audit.TestCloudSpaceGuardEndToEnd.test_08_offline_store_ui_no_external_cdn \
+            test_store_audit.TestCloudSpaceGuardEndToEnd.test_10_microsoft_store_msix_manifest
+      - name: Verify non-destructive CLI smoke
+        run: |
+          python space_guard_agent.py status --target-gb 1 > /tmp/csg-status.json
+          python space_guard_agent.py scan --min-mb 1048576 > /tmp/csg-scan.json
+
+  macos-bundle:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build actual Universal-2 macOS bundle
+        run: ./build_macos_app.sh
+      - name: Verify CloudSpaceGuard bundle, privacy manifest, architectures, and ad-hoc signature
+        run: |
+          python -m unittest -v \
+            test_store_audit.TestCloudSpaceGuardEndToEnd.test_09_macos_app_store_bundle_and_privacy_manifest
