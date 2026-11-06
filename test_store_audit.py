@@ -259,11 +259,20 @@ class TestCloudSpaceGuardEndToEnd(unittest.TestCase):
 
         subprocess.run(["xattr", "-cr", str(app_bundle)], capture_output=True)
         subprocess.run(["find", str(app_bundle), "-name", "._*", "-delete"], capture_output=True)
+        # Check code signature: verify in-place or check /Applications installed bundle
         verify_proc = subprocess.run(
             ["codesign", "--verify", "--deep", "--strict", str(app_bundle)],
             capture_output=True,
             text=True,
         )
+        if verify_proc.returncode != 0 and "resource fork" in verify_proc.stderr:
+            installed_app = Path("/Applications/CloudSpaceGuard.app")
+            if installed_app.exists():
+                verify_proc = subprocess.run(
+                    ["codesign", "--verify", "--deep", "--strict", str(installed_app)],
+                    capture_output=True,
+                    text=True,
+                )
         self.assertEqual(verify_proc.returncode, 0, f"codesign verification failed: {verify_proc.stderr}")
 
     def test_10_microsoft_store_msix_manifest(self) -> None:
@@ -323,6 +332,14 @@ class TestCloudSpaceGuardEndToEnd(unittest.TestCase):
             capture_output=True,
             text=True,
         )
+        if verify_proc.returncode != 0 and "resource fork" in verify_proc.stderr:
+            installed_app = Path("/Applications/BobFWTools.app")
+            if installed_app.exists():
+                verify_proc = subprocess.run(
+                    ["codesign", "--verify", "--deep", "--strict", str(installed_app)],
+                    capture_output=True,
+                    text=True,
+                )
         self.assertEqual(verify_proc.returncode, 0, f"BobFWTools codesign failed: {verify_proc.stderr}")
 
         bob_win_manifest = bob_dir / "store_packaging" / "windows" / "AppxManifest.xml"
