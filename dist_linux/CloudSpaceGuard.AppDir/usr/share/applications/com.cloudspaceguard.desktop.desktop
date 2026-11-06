@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Cloud Space Guard
+Comment=Cross-Platform Multi-Cloud Offloader & SHA-256 Space Saver
+Exec=cloud-space-guard
+Icon=cloud-space-guard
+Terminal=false
+Categories=Utility;System;FileManager;
+Keywords=cloud;storage;offload;space;cleanup;drive;
+StartupNotify=true
+StartupWMClass=cloud-space-guard

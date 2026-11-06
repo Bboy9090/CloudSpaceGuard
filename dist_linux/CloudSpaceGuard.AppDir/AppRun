@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+HERE="$(dirname "$(readlink -f "${0}")")"
+export PATH="${HERE}/usr/bin:${PATH}"
+export PYTHONPATH="${HERE}/usr/lib/cloud-space-guard:${PYTHONPATH:-}"
+
+# Check for Python 3 runtime on host
+if ! command -v python3 >/dev/null 2>&1; then
+    echo "Error: python3 is required to run Cloud Space Guard." >&2
+    exit 1
+fi
+
+exec python3 "${HERE}/usr/lib/cloud-space-guard/space_guard_agent.py" serve "$@"
