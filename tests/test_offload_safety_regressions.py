@@ -39,8 +39,30 @@ class DataSafetyTests(unittest.TestCase):
         self.assertFalse(guard.restore_from_stub(str(stub))['ok']); self.assertTrue(target.is_symlink()); self.assertTrue(stub.exists())
     def test_file_restore_succeeds_when_absent(self):
         target=self.root/'target'; stub=self.make_stub(target); self.assertTrue(guard.restore_from_stub(str(stub))['ok']); self.assertEqual(target.read_bytes(),b'previous content'); self.assertFalse(stub.exists())
-    def test_legacy_directory_restore_is_blocked(self):
-        target=self.root/'project'; stub=self.make_stub(target,True); self.assertFalse(guard.restore_from_stub(str(stub))['ok']); self.assertFalse(target.exists()); self.assertTrue(stub.exists())
+    def test_directory_restore_keeps_existing_and_restores_when_absent(self):
+        import shutil
+        src=self.root/'project'; (src/'node_modules').mkdir(parents=True); (src/'node_modules'/'unique').write_text('important')
+        result=guard.verify_and_offload_file(str(src),'test'); self.assertTrue(result['ok'])
+        stub=Path(str(src)+'.cloudstub'); self.assertFalse(guard.restore_from_stub(str(stub))['ok'])
+        self.assertEqual((src/'node_modules'/'unique').read_text(),'important')
+        shutil.rmtree(src); self.assertTrue(guard.restore_from_stub(str(stub))['ok'])
+        self.assertEqual((src/'node_modules'/'unique').read_text(),'important')
+    def test_unsafe_archive_rejected_without_creating_target(self):
+        import io, tarfile
+        target=self.root/'project'; vault=self.root/'hostile.tar.gz'
+        with tarfile.open(vault,'w:gz') as tar:
+            item=tarfile.TarInfo('project/../../outside'); item.size=1; tar.addfile(item,io.BytesIO(b'x'))
+        stub=self.root/'unsafe.cloudstub'; stub.write_text(json.dumps({'original_path':str(target),'cloud_vault_path':str(vault),'sha256':guard.compute_sha256(vault),'is_directory_archive':True}))
+        self.assertFalse(guard.restore_from_stub(str(stub))['ok']); self.assertFalse(target.exists()); self.assertFalse((self.root/'outside').exists()); self.assertTrue(stub.exists())
+    def test_changed_source_fails_before_success_and_retains_data(self):
+        src=self.root/'project'; src.mkdir(); (src/'file').write_text('important')
+        original=guard._directory_snapshot; calls=[]
+        def changing(root):
+            result=original(root); calls.append(1)
+            if len(calls)==2: result['project/file']='different'
+            return result
+        with patch.object(guard,'_directory_snapshot',side_effect=changing): result=guard.verify_and_offload_file(str(src),'test')
+        self.assertFalse(result['ok']); self.assertEqual((src/'file').read_text(),'important'); self.assertFalse(Path(str(src)+'.cloudstub').exists())
     def test_unknown_provider_never_falls_back(self):
         src=self.root/'source'; src.write_text('data'); self.assertFalse(guard.verify_and_offload_file(str(src),'missing')['ok']); self.assertTrue(src.exists())
     def test_symlink_in_directory_blocks_copy_without_source_loss(self):
