@@ -607,6 +607,11 @@ def verify_and_offload_file(
     leave_stub: bool = True,
     dry_run: bool = False,
 ) -> Dict[str, Any]:
+    # A checksum of a local sync folder does not establish remote durability.
+    # The legacy implementation deletes sources and can overwrite vault copies.
+    # Keep previews available while the destructive operation is redesigned.
+    if not dry_run:
+        return {"ok": False, "error": "Offload is temporarily disabled to protect your files. Dry-run previews remain available."}
     src = Path(file_path_str).expanduser().resolve()
     if not src.exists():
         return {"ok": False, "error": f"Path not found: {src}"}
@@ -819,13 +824,21 @@ def restore_from_stub(stub_path_str: str) -> Dict[str, Any]:
             }
 
         if meta.get("is_directory_archive"):
-            orig_file.parent.mkdir(parents=True, exist_ok=True)
-            with tarfile.open(cloud_file, "r:gz") as tar:
-                _safe_extract_tar(tar, orig_file.parent)
-            restored_sha = remote_sha
+            return {"ok": False, "error": "Directory restore is temporarily disabled until overwrite-safe extraction is available."}
         else:
             orig_file.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(cloud_file, orig_file)
+            # Exclusive creation also rejects dangling symlinks and concurrent
+            # creators instead of overwriting newly created local work.
+            try:
+                destination = orig_file.open("xb")
+            except FileExistsError:
+                return {"ok": False, "error": f"Restore destination already exists: {orig_file}"}
+            try:
+                with destination, cloud_file.open("rb") as source:
+                    shutil.copyfileobj(source, destination)
+            except Exception:
+                orig_file.unlink(missing_ok=True)
+                raise
             restored_sha = compute_sha256(orig_file)
             if restored_sha != meta.get("sha256"):
                 orig_file.unlink(missing_ok=True)
