@@ -171,8 +171,11 @@ class DataSafetyLifecycleTests(unittest.TestCase):
             )
             with self.assertRaises(urllib.error.HTTPError) as err:
                 urllib.request.urlopen(req, timeout=5)
-            self.assertEqual(err.exception.code, 403)
-            payload = json.loads(err.exception.read().decode("utf-8"))
+            try:
+                self.assertEqual(err.exception.code, 403)
+                payload = json.loads(err.exception.read().decode("utf-8"))
+            finally:
+                err.exception.close()
             self.assertFalse(payload["ok"])
             self.assertIn("disabled", payload["error"].lower())
         finally:
@@ -260,9 +263,12 @@ class DataSafetyLifecycleTests(unittest.TestCase):
         with patch.object(guard, "scan_system_caches", return_value=mock_caches):
             res = guard.clean_safe_cache("npm_cache")
 
+        actual_after = guard.dir_size_bytes(cache_dir)
         self.assertTrue(res["ok"], f"clean_safe_cache failed: {res}")
-        self.assertEqual(res["freed_bytes"], expected_size)
-        self.assertEqual(res["after_bytes"], 0)
+        self.assertEqual(res["after_bytes"], actual_after)
+        self.assertEqual(res["freed_bytes"], max(0, expected_size - actual_after))
+        self.assertGreater(res["freed_bytes"], 0)
+        self.assertNotEqual(res["freed_bytes"], mock_caches[0]["size_bytes"])
         self.assertEqual(list(cache_dir.iterdir()), [])
 
 
