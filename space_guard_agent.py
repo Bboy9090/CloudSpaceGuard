@@ -1129,7 +1129,7 @@ def run_server(port: int = DEFAULT_PORT) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Cloud Space Guard — Cross-Platform Multi-Cloud Offload & Space Saver"
+        description="Cloud Space Guard — Verified Local Vault Copy & Safe Cache Audit Suite"
     )
     sub = parser.add_subparsers(dest="command")
 
@@ -1139,13 +1139,13 @@ def main() -> None:
     p_scan = sub.add_parser("scan", help="Scan system caches and large offloadable files/projects")
     p_scan.add_argument("--min-mb", type=float, default=25.0, help="Minimum size in MB")
 
-    p_offload = sub.add_parser("offload", help="SHA-256 verify and offload a file or project folder to a cloud container")
+    p_offload = sub.add_parser("offload", help="Create a verified local vault copy of a file or project folder (source retained; cloud upload not verified)")
     p_offload.add_argument("--file", required=True, help="Path to local file or project folder")
     p_offload.add_argument("--provider", default="gdrive", help="Cloud provider ID (gdrive, icloud, onedrive, dropbox, etc.)")
     p_offload.add_argument("--no-stub", action="store_true", help="Do not leave a .cloudstub receipt file")
     p_offload.add_argument("--dry-run", action="store_true", help="Compute SHA-256 and preview without deleting")
 
-    p_restore = sub.add_parser("restore", help="Restore an offloaded file or project folder from its .cloudstub receipt")
+    p_restore = sub.add_parser("restore", help="Restore a file or project folder from its .cloudstub receipt into an absent destination (existing targets rejected)")
     p_restore.add_argument("--stub", required=True, help="Path to .cloudstub file")
 
     p_clean = sub.add_parser("clean-cache", help="Safely purge a developer/system cache by ID")
