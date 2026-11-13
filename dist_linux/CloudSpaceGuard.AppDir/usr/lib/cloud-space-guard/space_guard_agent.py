@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 """
-Cloud Space Guard — All-For-One Cross-Platform Space Saver & Multi-Cloud Offload Agent
+Cloud Space Guard — Cross-Platform Local Vault Copy & Cache Audit Agent
 Supports: macOS, Windows, Linux, and ChromeOS (Chromebooks / Crostini)
 
 Features:
   1. Real-time Disk Telemetry & Target Free-Space Planner (e.g. 74 GB for Bootcamp / VMs)
-  2. Multi-Cloud Container Discovery & Custom 3rd-Party Cloud Connectors (Free & Paid Tiers):
-     - Google Drive (Desktop Mount, ChromeOS /mnt/chromeos/GoogleDrive, or rclone)
-     - iCloud Drive (macOS CloudDocs + native `brctl evict` cloud eviction, Windows iCloudDrive)
-     - Microsoft OneDrive & Dropbox
-     - S3-Compatible / R2 / Backblaze B2 / Wasabi / WebDAV / rclone remotes
-  3. Cryptographic Verify-Before-Delete (SHA-256 Checksum Verification + .cloudstub receipts)
-     - Supports both individual large files AND whole Project Snapshot folders (auto-archived to .tar.gz,
-       verified in cloud via SHA-256, and replaced with a .cloudstub receipt)
-  4. Safe Developer & System Cache Cleaner (Docker, Rust target/, node_modules/, Xcode, npm, pnpm, Cargo, Playwright, Pip)
-  5. Built-in Local Web Dashboard Server (http://127.0.0.1:7474) + Full CLI
+  2. Multi-Cloud Vault Folder Discovery & Custom Vault Connectors:
+     - Google Drive, iCloud Drive, Microsoft OneDrive, Dropbox, or custom local/mounted folders
+  3. Verified Local Vault Copy (SHA-256 Checksum Verification + .cloudstub receipts):
+     - Copies individual files or complete directory archives (.tar.gz) into the selected vault folder.
+     - Retains original source files/directories (a local sync folder does not prove remote cloud durability,
+       and keeping the source does not reclaim local disk space).
+  4. Developer & System Cache Audit and Selective Cache Cleaning
+  5. Built-in Local Web Dashboard Server (http://127.0.0.1:7474) + CLI
 """
 
 from __future__ import annotations
@@ -34,6 +32,7 @@ import sys
 import tarfile
 import tempfile
 import urllib.parse
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -409,9 +408,9 @@ def scan_system_caches(force_refresh: bool = False) -> List[Dict[str, Any]]:
             "name": "Linux / Chromebook ~/.cache",
             "path": home / ".cache",
             "category": "System Cache",
-            "safe_level": "safe",
+            "safe_level": "review",
             "clean_cmd": "rm -rf ~/.cache/*",
-            "description": "Standard XDG user cache directory on Linux and ChromeOS.",
+            "description": "Standard XDG user cache directory on Linux and ChromeOS. Review before cleaning so active desktop/browser state is not disrupted.",
         },
     ]
 
@@ -447,7 +446,7 @@ def scan_system_caches(force_refresh: bool = False) -> List[Dict[str, Any]]:
                 "name": f"Rust/Tauri Build Targets ({len(rust_targets)} projects in ~/Projects)",
                 "path": str(home / "Projects" / "*/src-tauri/target"),
                 "category": "Regenerable Build Artifacts",
-                "safe_level": "safe",
+                "safe_level": "review",
                 "clean_cmd": "find ~/Projects -maxdepth 3 -name target -type d -exec rm -rf {} +",
                 "description": "Compiled intermediate Rust/Tauri binaries across your BobFWTools worktrees. Source code is NOT touched.",
                 "size_bytes": total_rust,
@@ -463,7 +462,7 @@ def scan_system_caches(force_refresh: bool = False) -> List[Dict[str, Any]]:
                 "name": f"Project node_modules Folders ({len(node_mods)} projects in ~/Projects)",
                 "path": str(home / "Projects" / "*/node_modules"),
                 "category": "Regenerable Dependencies",
-                "safe_level": "safe",
+                "safe_level": "review",
                 "clean_cmd": "find ~/Projects -maxdepth 3 -name node_modules -type d -prune -exec rm -rf {} +",
                 "description": "Installed npm/pnpm packages across old project worktrees. Reinstall anytime with `npm install` or `pnpm i`.",
                 "size_bytes": total_nm,
@@ -523,7 +522,7 @@ def scan_offload_candidates(min_size_mb: float = 25.0, force_refresh: bool = Fal
                         "size_formatted": f"{round(sz / (1024 ** 3), 2)} GB",
                         "modified": datetime.datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M"),
                         "already_in_cloud": None,
-                        "recommended_action": "Archive (.tar.gz) + SHA-256 Verify & Offload to Cloud Vault",
+                        "recommended_action": "Archive (.tar.gz) + SHA-256 Local Vault Copy (Source Retained)",
                     })
                     if len(candidates) >= 20:
                         break
@@ -573,9 +572,9 @@ def scan_offload_candidates(min_size_mb: float = 25.0, force_refresh: bool = Fal
                             "modified": datetime.datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M"),
                             "already_in_cloud": "icloud" if in_icloud else ("gdrive" if in_gdrive else None),
                             "recommended_action": (
-                                "Native Evict (brctl evict — already in iCloud)"
+                                "In iCloud Folder (Verify Local Vault Copy; Source Retained)"
                                 if in_icloud
-                                else ("Verify & Evict Local Cache (already in Google Drive)" if in_gdrive else "SHA-256 Verify & Offload to Cloud Vault")
+                                else ("In Google Drive Folder (Verify Local Vault Copy; Source Retained)" if in_gdrive else "SHA-256 Local Vault Copy (Source Retained)")
                             ),
                         })
                         if len(candidates) >= 75:
@@ -601,200 +600,148 @@ def compute_sha256(file_path: Path, chunk_size: int = 4 * 1024 * 1024) -> str:
     return h.hexdigest()
 
 
+def _directory_snapshot(root: Path) -> Dict[str, Optional[str]]:
+    """Record every regular file and directory; reject links and special files."""
+    snapshot: Dict[str, Optional[str]] = {root.name: None}
+    for base, dirs, files in os.walk(root, followlinks=False, onerror=lambda exc: (_ for _ in ()).throw(exc)):
+        for name in dirs + files:
+            item = Path(base) / name
+            relative = (Path(root.name) / item.relative_to(root)).as_posix()
+            if item.is_symlink() or not (item.is_file() or item.is_dir()):
+                raise ValueError(f"Unsupported link or special file: {item}")
+            snapshot[relative] = compute_sha256(item) if item.is_file() else None
+    return snapshot
+
+
+def _is_normalized_archive_member_path(name: str, expected_root: Optional[str] = None) -> bool:
+    cleaned = name.rstrip("/")
+    if not cleaned or cleaned.startswith("/") or "\\" in cleaned:
+        return False
+    raw_parts = cleaned.split("/")
+    if any(part in {"", ".", ".."} for part in raw_parts):
+        return False
+    if expected_root is not None and raw_parts[0] != expected_root:
+        return False
+    return True
+
+
+def _verify_directory_archive(archive: Path, expected: Dict[str, Optional[str]]) -> None:
+    seen: Dict[str, Optional[str]] = {}
+    with tarfile.open(archive, "r:gz") as tar:
+        for member in tar:
+            if not _is_normalized_archive_member_path(member.name):
+                raise ValueError(f"Non-normalized or unsafe archive entry: {member.name}")
+            name = member.name.rstrip("/")
+            if name in seen or name not in expected:
+                raise ValueError(f"Unexpected or duplicate archive entry: {name}")
+            if member.isdir():
+                seen[name] = None
+            elif member.isfile():
+                stream = tar.extractfile(member)
+                if stream is None:
+                    raise ValueError(f"Unreadable archive entry: {name}")
+                digest = hashlib.sha256()
+                with stream:
+                    for chunk in iter(lambda: stream.read(4 * 1024 * 1024), b""):
+                        digest.update(chunk)
+                seen[name] = digest.hexdigest()
+            else:
+                raise ValueError(f"Unsupported archive entry: {name}")
+    if seen != expected:
+        raise ValueError("Archive does not match the complete source snapshot.")
+
+
 def verify_and_offload_file(
     file_path_str: str,
     provider_id: str = "gdrive",
     leave_stub: bool = True,
     dry_run: bool = False,
 ) -> Dict[str, Any]:
-    src = Path(file_path_str).expanduser().resolve()
-    if not src.exists():
-        return {"ok": False, "error": f"Path not found: {src}"}
+    """Create a verified local vault copy; never delete the original.
 
+    A mounted sync directory cannot prove remote upload or durability. This
+    operation therefore does not reclaim local space and must not claim to.
+    """
+    if not file_path_str:
+        return {"ok": False, "error": "A source path is required."}
+    source_input = Path(file_path_str).expanduser()
+    if source_input.is_symlink():
+        return {"ok": False, "error": "Symlink sources are not supported."}
+    src = source_input.resolve()
+    if not src.exists() or not (src.is_file() or src.is_dir()):
+        return {"ok": False, "error": f"Source not found or unsupported: {src}"}
     providers = {p["id"]: p for p in discover_cloud_providers()}
-    provider = providers.get(provider_id) or providers.get("gdrive")
+    provider = providers.get(provider_id)
     if not provider:
         return {"ok": False, "error": f"Unknown cloud provider: {provider_id}"}
-
-    vault_root = Path(provider["vault_path"]).expanduser()
-    dest_dir = vault_root / src.parent.name
-    stub_file = Path(f"{src}.cloudstub")
-
-    # Handle Directory Offload (packages source code excluding regenerable target/ & node_modules/ into a verified .tar.gz in Cloud Vault)
-    if src.is_dir():
-        total_dir_bytes = dir_size_bytes(src)
-        archive_name = f"{src.name}.csg-archive.tar.gz"
-        dest_file = dest_dir / archive_name
-        if dry_run:
-            return {
-                "ok": True,
-                "mode": "dry_run_directory",
-                "file_name": src.name,
-                "size_bytes": total_dir_bytes,
-                "local_sha256": "DIRECTORY-ARCHIVE-SHA256-ON-BUILD",
-                "cloud_destination": str(dest_file),
-                "stub_path": str(stub_file),
-            }
-        try:
-            dest_dir.mkdir(parents=True, exist_ok=True)
-            with tempfile.NamedTemporaryFile(prefix=f"{src.name}_", suffix=".tar.gz", delete=False) as tmp:
-                tmp_archive = Path(tmp.name)
-
-            def _exclude_heavy_caches(tarinfo: tarfile.TarInfo) -> Optional[tarfile.TarInfo]:
-                parts = Path(tarinfo.name).parts
-                if "target" in parts or "node_modules" in parts:
-                    return None
-                return tarinfo
-
-            with tarfile.open(tmp_archive, "w:gz") as tar:
-                tar.add(str(src), arcname=src.name, filter=_exclude_heavy_caches)
-
-            local_sha256 = compute_sha256(tmp_archive)
-            shutil.copy2(tmp_archive, dest_file)
-            tmp_archive.unlink(missing_ok=True)
-
-            remote_sha256 = compute_sha256(dest_file)
-            if remote_sha256 != local_sha256:
-                return {
-                    "ok": False,
-                    "error": f"SHA-256 mismatch on archive! Local={local_sha256[:12]} Remote={remote_sha256[:12]}. Directory NOT deleted.",
-                }
-
-            stub_payload = {
-                "schema": "cloud-space-guard.stub/v1",
-                "is_directory_archive": True,
-                "original_name": src.name,
-                "original_path": str(src),
-                "cloud_provider_id": provider["id"],
-                "cloud_provider_name": provider["name"],
-                "cloud_vault_path": str(dest_file),
-                "size_bytes": total_dir_bytes,
-                "archive_size_bytes": dest_file.stat().st_size,
-                "sha256": local_sha256,
-                "offloaded_at": datetime.datetime.now().isoformat(timespec="seconds"),
-                "restore_command": f"python3 '{Path(__file__).resolve()}' restore --stub '{stub_file}'",
-            }
-            if leave_stub:
-                stub_file.write_text(json.dumps(stub_payload, indent=2), encoding="utf-8")
-
-            shutil.rmtree(src)
-
-            entry = {
-                "timestamp": stub_payload["offloaded_at"],
-                "action": "verified_directory_offload",
-                "file_name": src.name,
-                "original_path": str(src),
-                "cloud_destination": str(dest_file),
-                "stub_path": str(stub_file) if leave_stub else None,
-                "provider_id": provider["id"],
-                "provider_name": provider["name"],
-                "size_bytes": total_dir_bytes,
-                "sha256": local_sha256,
-                "verified": True,
-            }
-            append_ledger(entry)
-            return {"ok": True, "mode": "verified_directory_offload", "entry": entry}
-        except Exception as exc:
-            return {"ok": False, "error": str(exc)}
-
-    # Standard single-file offload
-    size_bytes = src.stat().st_size
-    local_sha256 = compute_sha256(src)
-
-    if "com~apple~CloudDocs" in str(src) and detect_os_profile() == "macos" and not dry_run:
-        proc = subprocess.run(["brctl", "evict", str(src)], capture_output=True, text=True)
-        if proc.returncode == 0:
-            entry = {
-                "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
-                "action": "icloud_native_evict",
-                "file_name": src.name,
-                "original_path": str(src),
-                "cloud_destination": f"iCloud Drive ({src})",
-                "provider_id": "icloud",
-                "size_bytes": size_bytes,
-                "sha256": local_sha256,
-                "verified": True,
-            }
-            append_ledger(entry)
-            return {"ok": True, "mode": "brctl_evict", "entry": entry}
-
-    dest_file = dest_dir / src.name
-
+    vault = Path(provider["vault_path"]).expanduser().resolve()
+    if src == vault or (src.is_dir() and vault.is_relative_to(src)):
+        return {"ok": False, "error": "Vault cannot be inside the source directory."}
+    receipt = Path(f"{src}.cloudstub")
+    if leave_stub and os.path.lexists(receipt):
+        return {"ok": False, "error": f"Receipt already exists: {receipt}"}
     if dry_run:
-        return {
-            "ok": True,
-            "mode": "dry_run",
-            "file_name": src.name,
-            "size_bytes": size_bytes,
-            "local_sha256": local_sha256,
-            "cloud_destination": str(dest_file),
-            "stub_path": str(stub_file),
-        }
-
+        return {"ok": True, "mode": "dry_run", "file_name": src.name,
+                "local_sha256": compute_sha256(src) if src.is_file() else None,
+                "cloud_destination": str(vault), "stub_path": str(receipt),
+                "source_retained": True, "remote_durability_verified": False}
+    dest = None
+    receipt_created = False
     try:
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        if dest_file.exists() and dest_file.stat().st_size == size_bytes:
-            remote_sha256 = compute_sha256(dest_file)
-            if remote_sha256 != local_sha256:
-                shutil.copy2(src, dest_file)
-                remote_sha256 = compute_sha256(dest_file)
+        vault.mkdir(parents=True, exist_ok=True)
+        dest_dir = vault / "cloud-space-guard" / uuid.uuid4().hex
+        dest_dir.mkdir(parents=True, exist_ok=False)
+        dest = dest_dir / (src.name + ".csg-archive.tar.gz" if src.is_dir() else src.name)
+        if src.is_dir():
+            snapshot = _directory_snapshot(src)
+            with tarfile.open(dest, "x:gz") as tar:
+                tar.add(src, arcname=src.name, recursive=True)
+            _verify_directory_archive(dest, snapshot)
+            if _directory_snapshot(src) != snapshot:
+                raise ValueError("Source directory changed during archive creation.")
+            digest = compute_sha256(dest)
         else:
-            shutil.copy2(src, dest_file)
-            remote_sha256 = compute_sha256(dest_file)
-
-        if remote_sha256 != local_sha256:
-            return {
-                "ok": False,
-                "error": f"SHA-256 mismatch! Local={local_sha256[:12]}... Remote={remote_sha256[:12]}... Local file was NOT deleted.",
-            }
-
-        stub_payload = {
-            "schema": "cloud-space-guard.stub/v1",
-            "is_directory_archive": False,
-            "original_name": src.name,
-            "original_path": str(src),
-            "cloud_provider_id": provider["id"],
-            "cloud_provider_name": provider["name"],
-            "cloud_vault_path": str(dest_file),
-            "size_bytes": size_bytes,
-            "sha256": local_sha256,
-            "offloaded_at": datetime.datetime.now().isoformat(timespec="seconds"),
-            "restore_command": f"python3 '{Path(__file__).resolve()}' restore --stub '{stub_file}'",
-        }
-
+            digest = compute_sha256(src)
+            with src.open("rb") as source, dest.open("xb") as target:
+                shutil.copyfileobj(source, target)
+            if compute_sha256(dest) != digest or compute_sha256(src) != digest:
+                raise ValueError("Source or copied file changed during verification.")
+        payload = {"schema": "cloud-space-guard.stub/v1", "is_directory_archive": src.is_dir(),
+                   "original_name": src.name, "original_path": str(src),
+                   "cloud_provider_id": provider["id"], "cloud_provider_name": provider["name"],
+                   "cloud_vault_path": str(dest), "size_bytes": src.stat().st_size if src.is_file() else None,
+                   "sha256": digest, "offloaded_at": datetime.datetime.now().isoformat(timespec="seconds"),
+                   "remote_durability_verified": False, "source_retained": True}
         if leave_stub:
-            stub_file.write_text(json.dumps(stub_payload, indent=2), encoding="utf-8")
-
-        src.unlink()
-
-        entry = {
-            "timestamp": stub_payload["offloaded_at"],
-            "action": "verified_cloud_offload",
-            "file_name": src.name,
-            "original_path": str(src),
-            "cloud_destination": str(dest_file),
-            "stub_path": str(stub_file) if leave_stub else None,
-            "provider_id": provider["id"],
-            "provider_name": provider["name"],
-            "size_bytes": size_bytes,
-            "sha256": local_sha256,
-            "verified": True,
-        }
+            with receipt.open("x", encoding="utf-8") as stream:
+                receipt_created = True
+                json.dump(payload, stream, indent=2)
+        entry = {"timestamp": payload["offloaded_at"], "action": "verified_local_vault_copy",
+                 "file_name": src.name, "original_path": str(src), "cloud_destination": str(dest),
+                 "stub_path": str(receipt) if leave_stub else None, "provider_id": provider["id"],
+                 "provider_name": provider["name"], "sha256": digest, "verified": True,
+                 "remote_durability_verified": False, "source_retained": True}
         append_ledger(entry)
-        return {"ok": True, "mode": "verified_offload", "entry": entry}
+        return {"ok": True, "mode": "verified_local_vault_copy", "entry": entry,
+                "source_retained": True, "remote_durability_verified": False,
+                "message": "Local vault copy verified; source retained. Cloud upload is not verified and no space was reclaimed."}
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        # Preserve any copy on failure for manual recovery. Never remove source or receipt.
+        return {"ok": False, "error": str(exc), "source_retained": True,
+                "partial_copy": str(dest) if dest else None, "receipt_created": receipt_created}
 
 
 def _safe_extract_tar(tar: tarfile.TarFile, target_dir: Path) -> None:
-    """Prevents CVE-2007-4559 path traversal (Tar-Slip) during archive restore."""
+    """Prevents CVE-2007-4559 path traversal (Tar-Slip) and rejects links/special files during restore."""
     resolved_root = target_dir.resolve()
     for member in tar.getmembers():
+        if not _is_normalized_archive_member_path(member.name):
+            raise ValueError(f"Blocked unsafe tar path traversal: {member.name}")
         member_path = (resolved_root / member.name).resolve()
         if not str(member_path).startswith(str(resolved_root) + os.sep) and member_path != resolved_root:
             raise ValueError(f"Blocked unsafe tar path traversal: {member.name}")
-        if member.issym() or member.islnk():
-            raise ValueError(f"Blocked symlink in cloud archive: {member.name}")
+        if member.issym() or member.islnk() or not (member.isfile() or member.isdir()):
+            raise ValueError(f"Blocked unsupported or link entry in archive: {member.name}")
     tar.extractall(path=resolved_root)
 
 
@@ -819,13 +766,43 @@ def restore_from_stub(stub_path_str: str) -> Dict[str, Any]:
             }
 
         if meta.get("is_directory_archive"):
+            if os.path.lexists(orig_file):
+                return {"ok": False, "error": f"Restore destination already exists: {orig_file}"}
+            expected_root = orig_file.name
             orig_file.parent.mkdir(parents=True, exist_ok=True)
-            with tarfile.open(cloud_file, "r:gz") as tar:
-                _safe_extract_tar(tar, orig_file.parent)
+            with tempfile.TemporaryDirectory(prefix="csg-restore-", dir=orig_file.parent) as staging:
+                stage = Path(staging)
+                with tarfile.open(cloud_file, "r:gz") as tar:
+                    seen = set()
+                    for member in tar.getmembers():
+                        if not _is_normalized_archive_member_path(member.name, expected_root=expected_root):
+                            raise ValueError(f"Unsafe archive member: {member.name}")
+                        norm_name = member.name.rstrip("/")
+                        if norm_name in seen or not (member.isfile() or member.isdir()):
+                            raise ValueError(f"Unsafe archive member: {member.name}")
+                        seen.add(norm_name)
+                    _safe_extract_tar(tar, stage)
+                staged_root = stage / expected_root
+                if not staged_root.is_dir() or staged_root.is_symlink():
+                    raise ValueError("Archive lacks the expected directory root.")
+                if os.path.lexists(orig_file):
+                    return {"ok": False, "error": f"Restore destination already exists: {orig_file}"}
+                os.replace(staged_root, orig_file)
             restored_sha = remote_sha
         else:
             orig_file.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(cloud_file, orig_file)
+            # Exclusive creation also rejects dangling symlinks and concurrent
+            # creators instead of overwriting newly created local work.
+            try:
+                destination = orig_file.open("xb")
+            except FileExistsError:
+                return {"ok": False, "error": f"Restore destination already exists: {orig_file}"}
+            try:
+                with destination, cloud_file.open("rb") as source:
+                    shutil.copyfileobj(source, destination)
+            except Exception:
+                orig_file.unlink(missing_ok=True)
+                raise
             restored_sha = compute_sha256(orig_file)
             if restored_sha != meta.get("sha256"):
                 orig_file.unlink(missing_ok=True)
@@ -837,7 +814,7 @@ def restore_from_stub(stub_path_str: str) -> Dict[str, Any]:
         stub_path.unlink()
         entry = {
             "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
-            "action": "restored_from_cloud",
+            "action": "restored_from_vault",
             "file_name": orig_file.name,
             "original_path": str(orig_file),
             "cloud_destination": str(cloud_file),
@@ -852,34 +829,7 @@ def restore_from_stub(stub_path_str: str) -> Dict[str, Any]:
 
 
 def clean_safe_cache(cache_id: str) -> Dict[str, Any]:
-    if cache_id in {"projects_rust_targets", "projects_node_modules"}:
-        target_name = "target" if cache_id == "projects_rust_targets" else "node_modules"
-        dirs = [p for p in discover_project_build_caches() if p.name == target_name]
-        freed_bytes = 0
-        for d in dirs:
-            sz = dir_size_bytes(d)
-            shutil.rmtree(d, ignore_errors=True)
-            if not d.exists():
-                freed_bytes += sz
-        entry = {
-            "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
-            "action": "cache_cleaned",
-            "file_name": f"~/Projects {target_name} ({len(dirs)} folders)",
-            "original_path": f"~/Projects/*/{target_name}",
-            "cloud_destination": "Local Regenerable Build Cache Purge",
-            "size_bytes": freed_bytes,
-            "sha256": "BUILD-CACHE-PURGE",
-            "verified": True,
-        }
-        append_ledger(entry)
-        return {
-            "ok": True,
-            "freed_bytes": freed_bytes,
-            "freed_mb": round(freed_bytes / (1024 ** 2), 1),
-            "entry": entry,
-        }
-
-    caches = {c["id"]: c for c in scan_system_caches()}
+    caches = {c["id"]: c for c in scan_system_caches(force_refresh=True)}
     target = caches.get(cache_id)
     if not target:
         return {"ok": False, "error": f"Cache target '{cache_id}' not found or already empty."}
@@ -887,26 +837,38 @@ def clean_safe_cache(cache_id: str) -> Dict[str, Any]:
     if target["safe_level"] != "safe":
         return {
             "ok": False,
-            "error": f"'{target['name']}' requires manual review ({target['clean_cmd']}) so active containers/VMs are not disrupted.",
+            "error": f"'{target['name']}' requires manual review ({target['clean_cmd']}) so active containers/VMs or project trees are not disrupted.",
         }
 
     path = Path(target["path"])
-    before_bytes = target["size_bytes"]
+    before_bytes = dir_size_bytes(path) if path.exists() else 0
+    errors: List[str] = []
     try:
         if path.is_dir():
-            for child in path.iterdir():
+            def _on_rm_error(func: Any, failed_path: str, exc_info: Any) -> None:
+                errors.append(f"{failed_path}: {exc_info[1]}")
+
+            for child in list(path.iterdir()):
                 if child.is_dir() and not child.is_symlink():
-                    shutil.rmtree(child, ignore_errors=True)
+                    shutil.rmtree(child, onerror=_on_rm_error)
                 else:
                     try:
                         child.unlink()
-                    except OSError:
-                        pass
+                    except OSError as exc:
+                        errors.append(f"{child}: {exc}")
+        after_bytes = dir_size_bytes(path) if path.exists() else 0
         # Invalidate in-memory cache so subsequent reads see freshly freed disk
         global _CACHE_TIMESTAMP, _CACHED_CACHES
         _CACHE_TIMESTAMP = 0.0
         _CACHED_CACHES = []
-        freed_bytes = before_bytes
+        freed_bytes = max(0, before_bytes - after_bytes)
+        if errors and freed_bytes == 0:
+            return {
+                "ok": False,
+                "error": f"Failed to clean cache: {errors[0]}",
+                "errors": errors,
+                "after_bytes": after_bytes,
+            }
         entry = {
             "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
             "action": "cache_cleaned",
@@ -915,13 +877,15 @@ def clean_safe_cache(cache_id: str) -> Dict[str, Any]:
             "cloud_destination": "Local Safe Cache Purge",
             "size_bytes": freed_bytes,
             "sha256": "CACHE-PURGE",
-            "verified": True,
+            "verified": len(errors) == 0,
         }
         append_ledger(entry)
         return {
             "ok": True,
             "freed_bytes": freed_bytes,
             "freed_mb": round(freed_bytes / (1024 ** 2), 1),
+            "after_bytes": after_bytes,
+            "partial_errors": errors,
             "entry": entry,
         }
     except Exception as exc:
@@ -1127,22 +1091,13 @@ class SpaceGuardRequestHandler(http.server.BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/api/clean-all-safe":
-            caches = scan_system_caches()
-            cleaned = []
-            total_freed_mb = 0.0
-            for c in caches:
-                if c.get("safe_level") == "safe" and c.get("size_mb", 0) > 0:
-                    r = clean_safe_cache(c["id"])
-                    if r.get("ok"):
-                        cleaned.append(c["name"])
-                        total_freed_mb += r.get("freed_mb", 0.0)
-            self._send_json({
-                "ok": True,
-                "cleaned_count": len(cleaned),
-                "cleaned_names": cleaned,
-                "freed_mb": round(total_freed_mb, 2),
-                "telemetry": get_disk_telemetry()
-            })
+            self._send_json(
+                {
+                    "ok": False,
+                    "error": "Bulk cache cleaning is disabled pending per-target safety qualification. Clean individual verified caches instead.",
+                },
+                status=403,
+            )
             return
 
         self._send_json({"ok": False, "error": "Unknown endpoint"}, status=404)
@@ -1156,7 +1111,7 @@ def run_server(port: int = DEFAULT_PORT) -> None:
     ensure_state_dir()
     with ThreadedTCPServer(("127.0.0.1", port), SpaceGuardRequestHandler) as httpd:
         print(f"==================================================================")
-        print(f"  Cloud Space Guard v{APP_VERSION} — Cross-Platform Space Saver")
+        print(f"  Cloud Space Guard v{APP_VERSION} — Verified Local Vault Copy & Cache Audit")
         print(f"  OS Profile : {detect_os_profile().upper()} ({platform.node()})")
         print(f"  Dashboard  : http://127.0.0.1:{port}")
         print(f"==================================================================")
@@ -1165,7 +1120,7 @@ def run_server(port: int = DEFAULT_PORT) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Cloud Space Guard — Cross-Platform Multi-Cloud Offload & Space Saver"
+        description="Cloud Space Guard — Verified Local Vault Copy & Safe Cache Audit Suite"
     )
     sub = parser.add_subparsers(dest="command")
 
@@ -1175,13 +1130,13 @@ def main() -> None:
     p_scan = sub.add_parser("scan", help="Scan system caches and large offloadable files/projects")
     p_scan.add_argument("--min-mb", type=float, default=25.0, help="Minimum size in MB")
 
-    p_offload = sub.add_parser("offload", help="SHA-256 verify and offload a file or project folder to a cloud container")
+    p_offload = sub.add_parser("offload", help="Create a verified local vault copy of a file or project folder (source retained; cloud upload not verified)")
     p_offload.add_argument("--file", required=True, help="Path to local file or project folder")
     p_offload.add_argument("--provider", default="gdrive", help="Cloud provider ID (gdrive, icloud, onedrive, dropbox, etc.)")
     p_offload.add_argument("--no-stub", action="store_true", help="Do not leave a .cloudstub receipt file")
     p_offload.add_argument("--dry-run", action="store_true", help="Compute SHA-256 and preview without deleting")
 
-    p_restore = sub.add_parser("restore", help="Restore an offloaded file or project folder from its .cloudstub receipt")
+    p_restore = sub.add_parser("restore", help="Restore a file or project folder from its .cloudstub receipt into an absent destination (existing targets rejected)")
     p_restore.add_argument("--stub", required=True, help="Path to .cloudstub file")
 
     p_clean = sub.add_parser("clean-cache", help="Safely purge a developer/system cache by ID")

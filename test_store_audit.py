@@ -79,8 +79,8 @@ class TestCloudSpaceGuardEndToEnd(unittest.TestCase):
         self.assertTrue(sample_file.exists(), "Dry run must never remove the local file")
 
         res = csg.verify_and_offload_file(str(sample_file), provider_id="audit_vault", leave_stub=True, dry_run=False)
-        self.assertTrue(res["ok"], f"Offload failed: {res}")
-        self.assertFalse(sample_file.exists(), "Original file should be evicted after SHA-256 verification")
+        self.assertTrue(res["ok"], f"Vault copy failed: {res}")
+        self.assertTrue(sample_file.exists(), "Original file must be retained; local sync folder does not prove remote durability")
 
         stub_path = Path(f"{sample_file}.cloudstub")
         self.assertTrue(stub_path.exists(), ".cloudstub receipt must be created")
@@ -88,6 +88,13 @@ class TestCloudSpaceGuardEndToEnd(unittest.TestCase):
         self.assertEqual(stub_meta["sha256"], expected_sha)
         self.assertTrue(Path(stub_meta["cloud_vault_path"]).exists())
 
+        # Attempting restore when destination already exists must fail-closed to prevent overwriting
+        blocked = csg.restore_from_stub(str(stub_path))
+        self.assertFalse(blocked["ok"], "Restore must reject existing destination")
+        self.assertIn("already exists", blocked["error"])
+
+        # When destination is removed, restore succeeds
+        sample_file.unlink()
         restored = csg.restore_from_stub(str(stub_path))
         self.assertTrue(restored["ok"], f"Restore failed: {restored}")
         self.assertTrue(sample_file.exists(), "Original file must be restored")
@@ -106,17 +113,23 @@ class TestCloudSpaceGuardEndToEnd(unittest.TestCase):
         (proj_dir / "node_modules" / "pkg" / "index.js").write_text("module.exports = {};", encoding="utf-8")
 
         res = csg.verify_and_offload_file(str(proj_dir), provider_id="audit_vault", leave_stub=True, dry_run=False)
-        self.assertTrue(res["ok"], f"Directory offload failed: {res}")
-        self.assertFalse(proj_dir.exists(), "Project directory should be removed after archive verification")
+        self.assertTrue(res["ok"], f"Directory archive copy failed: {res}")
+        self.assertTrue(proj_dir.exists(), "Project directory must be retained; local sync folder does not prove remote durability")
 
         stub_path = Path(f"{proj_dir}.cloudstub")
         self.assertTrue(stub_path.exists())
 
+        # Restore fails when destination exists
+        blocked = csg.restore_from_stub(str(stub_path))
+        self.assertFalse(blocked["ok"], "Restore must reject existing destination directory")
+
+        # When destination is removed, restore succeeds and preserves all files
+        shutil.rmtree(proj_dir)
         restored = csg.restore_from_stub(str(stub_path))
         self.assertTrue(restored["ok"], f"Directory restore failed: {restored}")
         self.assertTrue(main_rs.exists(), "Source file src/main.rs must be restored intact")
-        self.assertFalse((proj_dir / "target").exists(), "Excluded target/ cache should not be in cloud archive")
-        self.assertFalse((proj_dir / "node_modules").exists(), "Excluded node_modules/ should not be in cloud archive")
+        self.assertTrue((proj_dir / "target" / "debug" / "heavy.bin").exists(), "Complete directory archive must preserve all source files")
+        self.assertTrue((proj_dir / "node_modules" / "pkg" / "index.js").exists(), "Complete directory archive must preserve all source files")
 
     def test_05_tampered_cloud_file_blocks_restore(self) -> None:
         sample_file = self.temp_dir / "critical_doc.pdf"

@@ -19,6 +19,8 @@ jobs:
           python-version: "3.12"
       - name: Compile Python sources
         run: python -m py_compile space_guard_agent.py test_store_audit.py
+      - name: Check dashboard JavaScript syntax
+        run: node tests/check_dashboard_syntax.cjs
       - name: Run portable cryptographic and store-contract tests
         run: |
           python -m unittest -v \
@@ -31,6 +33,11 @@ jobs:
             test_store_audit.TestCloudSpaceGuardEndToEnd.test_07_tar_slip_path_traversal_blocked \
             test_store_audit.TestCloudSpaceGuardEndToEnd.test_08_offline_store_ui_no_external_cdn \
             test_store_audit.TestCloudSpaceGuardEndToEnd.test_10_microsoft_store_msix_manifest
+      - name: Run data safety regression and lifecycle tests
+        run: |
+          python -m unittest -v \
+            tests.test_offload_safety_regressions \
+            tests.test_data_safety_lifecycle
       - name: Verify non-destructive CLI smoke
         run: |
           python space_guard_agent.py status --target-gb 1 > /tmp/csg-status.json

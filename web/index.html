@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cloud Space Guard — Cross-Platform Multi-Cloud Offload &amp; Space Saver</title>
+  <title>Cloud Space Guard — Verified Local Vault Copy &amp; Cache Audit</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -251,7 +251,7 @@
             </span>
           </div>
           <p class="text-xs text-slate-400">
-            All-For-One Space Saver &amp; Cryptographic Multi-Cloud Offloader • Verify SHA-256 Before Delete
+            Verified Local Vault Copies (Originals Retained) &amp; Selective Cache Audit
           </p>
         </div>
       </div>
@@ -295,7 +295,7 @@
             </div>
             <div class="flex justify-between items-center text-xs text-slate-400 pt-1">
               <span id="deficit-status-text">Calculating space deficit...</span>
-              <span id="projected-gain-text" class="text-emerald-400 font-semibold">Selected Reclaimable: +0.0 GB</span>
+              <span id="projected-gain-text" class="text-emerald-400 font-semibold">Selected copies: 0.0 GB (originals retained)</span>
             </div>
           </div>
 
@@ -313,7 +313,7 @@
               <label class="text-xs text-slate-400 block mb-1">Adjust Target Free Space (GB): <span id="slider-val-display" class="text-white font-bold">74 GB</span></label>
               <input type="range" id="target-slider" min="15" max="200" step="1" value="74" oninput="onTargetSliderChange(this.value)" class="w-full accent-cyan-400 cursor-pointer" />
             </div>
-            <button onclick="cleanAllSafeCaches()" id="btn-1click-clean" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-500/25 transition flex items-center gap-2">
+            <button onclick="cleanAllSafeCaches()" id="btn-1click-clean" disabled title="Unavailable pending safety review" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-500/25 transition flex items-center gap-2">
               <span>✨</span> 1-Click Smart Clean All Safe Caches
             </button>
             <button onclick="autoSelectForTarget()" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-semibold text-xs shadow-lg shadow-cyan-500/20 transition">
@@ -341,13 +341,13 @@
     <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-3">
       <div class="flex flex-wrap gap-2">
         <button onclick="switchTab('offload')" id="tab-btn-offload" class="tab-btn px-4 py-2 rounded-xl text-sm font-semibold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
-          1. Verify-Before-Delete Cloud Offload Queue
+          1. Local Vault Copy Queue
         </button>
         <button onclick="switchTab('caches')" id="tab-btn-caches" class="tab-btn px-4 py-2 rounded-xl text-sm font-semibold bg-slate-900 text-slate-300 border border-slate-800">
           2. System Cache &amp; Project Build Cleaner
         </button>
         <button onclick="switchTab('ledger')" id="tab-btn-ledger" class="tab-btn px-4 py-2 rounded-xl text-sm font-semibold bg-slate-900 text-slate-300 border border-slate-800">
-          3. Verified Cloud Stubs &amp; 1-Click Restore
+          3. Copy Receipts &amp; Restore
         </button>
         <button onclick="switchTab('cli')" id="tab-btn-cli" class="tab-btn px-4 py-2 rounded-xl text-sm font-semibold bg-slate-900 text-slate-300 border border-slate-800">
           4. Cross-Platform CLI &amp; OS Commands
@@ -369,9 +369,9 @@
     <section id="tab-panel-offload" class="space-y-4">
       <div class="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h3 class="text-lg font-bold text-white">Large Local Files &amp; Archives Ready for Cloud Offload</h3>
+          <h3 class="text-lg font-bold text-white">Large Local Files &amp; Folders Ready to Copy</h3>
           <p class="text-xs text-slate-400">
-            Every file is hashed with SHA-256 locally, uploaded/verified in your chosen Cloud Vault (Google Drive, iCloud Drive, S3/R2/B2), and only removed locally after the remote checksum matches 100%.
+            Copies are verified in the selected local vault folder. Originals are retained; this does not reclaim space or confirm a remote cloud upload.
           </p>
         </div>
         <div class="flex items-center gap-2">
@@ -379,7 +379,7 @@
             🔍 Dry-Run Verify Selected
           </button>
           <button onclick="runBatchOffload(false)" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/20">
-            🛡️ Verify SHA-256 &amp; Offload Selected
+            🛡️ Copy Selected to Local Vault
           </button>
         </div>
       </div>
@@ -420,9 +420,9 @@
     <!-- TAB 3: Verified Cloud Stubs & Restore Ledger -->
     <section id="tab-panel-ledger" class="hidden space-y-4">
       <div>
-        <h3 class="text-lg font-bold text-white">Cryptographic Verification Ledger &amp; 1-Click Cloud Restore</h3>
+        <h3 class="text-lg font-bold text-white">Local Copy Ledger &amp; Restore</h3>
         <p class="text-xs text-slate-400">
-          Complete audit log of every SHA-256 verified cloud offload and cache cleanup. Click Restore on any stubbed file to pull it back from Google Drive, iCloud Drive, or your 3rd-party vault.
+          Local copy and cache cleanup log. Restore checks the receipt and refuses to overwrite an existing destination. Cloud synchronization is not verified.
         </p>
       </div>
       <div class="glass rounded-2xl overflow-hidden">
@@ -457,7 +457,7 @@
             <pre class="text-slate-300 overflow-x-auto"><code># Check disk &amp; cloud mounts for 74 GB Bootcamp goal
 python3 space_guard_agent.py status --target-gb 74
 
-# Verify SHA-256 &amp; offload file to Google Drive
+# Create a verified local vault copy in Google Drive folder (source retained)
 python3 space_guard_agent.py offload \
   --file ~/Downloads/large_archive.zip \
   --provider gdrive
@@ -617,7 +617,6 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
         console.warn('Candidate load note:', e);
       }
     }
-    }
 
     async function onTargetSliderChange(val) {
       const target = parseFloat(val);
@@ -644,7 +643,7 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       }
       renderCandidates();
       renderTelemetry();
-      showToast(`Auto-selected ${state.selectedFiles.size} largest file(s) for SHA-256 Verified Cloud Offload. Check Tab 2 (System Caches) for additional space!`);
+      showToast(`Selected ${state.selectedFiles.size} file(s) for local vault copies; originals will remain in place.`);
     }
 
     function toggleSelectAllFiles(checked) {
@@ -682,7 +681,7 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       const totalCacheGb = +(state.caches.reduce((acc, c) => acc + c.size_bytes, 0) / (1024 ** 3)).toFixed(2);
 
       document.getElementById('projected-gain-text').textContent =
-        `Selected Offload: +${selectedGb} GB | Reclaimable Caches: +${totalCacheGb} GB`;
+        `Selected copies: ${selectedGb} GB (originals retained) | Estimated caches: ${totalCacheGb} GB`;
 
       const pct = Math.min(100, Math.max(4, Math.round((t.free_gb / Math.max(1, t.target_free_gb)) * 100)));
       document.getElementById('free-space-bar').style.width = `${pct}%`;
@@ -760,7 +759,7 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
                 Hash Check
               </button>
               <button onclick="offloadSingle('${safePath}', false)" class="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white">
-                Verify &amp; Offload
+                Copy to Vault
               </button>
             </td>
           </tr>
@@ -867,9 +866,9 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
           return;
         }
         if (dryRun) {
-          showToast(`Dry-Run SHA-256 Verified: ${data.local_sha256.slice(0, 20)}... → Ready for ${data.cloud_destination}`);
+          showToast(`Preview only: source retained. Vault: ${data.cloud_destination}`);
         } else {
-          showToast(`✓ Verified SHA-256 & Offloaded ${data.entry.file_name} to Cloud Vault!`);
+          showToast(`Local vault copy created: ${data.entry.file_name}. Original retained; cloud upload not verified.`);
           await refreshLiveScan();
         }
       } catch (e) {
@@ -895,33 +894,8 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       }
     }
 
-    async function cleanAllSafeCaches() {
-      const btn = document.getElementById('btn-1click-clean');
-      if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '<span>⏳</span> Cleaning Safe Caches...';
-      }
-      try {
-        const res = await fetch(, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Content-Length': '2' },
-          body: '{}'
-        });
-        const data = await res.json();
-        if (data.ok) {
-          showToast();
-          await refreshLiveScan();
-        } else {
-          showToast(, true);
-        }
-      } catch (e) {
-        showToast(, true);
-      } finally {
-        if (btn) {
-          btn.disabled = false;
-          btn.innerHTML = '<span>✨</span> 1-Click Smart Clean All Safe Caches';
-        }
-      }
+    function cleanAllSafeCaches() {
+      showToast('Bulk cleaning is unavailable while its safety behavior is reviewed.', true);
     }
 
     async function cleanCacheById(cacheId) {

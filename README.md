@@ -1,16 +1,25 @@
-# Cloud Space Guard — All-For-One Multi-Cloud Space Saver
+# Cloud Space Guard — Verified Local Vault Copy & System Cache Cleaner
 
-Cross-platform disk space recovery and cryptographic cloud offload suite for **macOS, Windows, Linux, and ChromeOS (Chromebooks)**.
+Cross-platform local vault copy and system cache inspection suite for **macOS, Windows, Linux, and ChromeOS (Chromebooks)**.
+
+> **Data Safety Notice**:
+> Copying a file or folder into a local sync folder (such as Google Drive, OneDrive, or iCloud) verifies the local copy's checksum and creates a receipt, but **does not confirm remote cloud durability or upload completion**. To prevent accidental data loss, **original sources are retained**. Because sources are kept, vault copying **does not reclaim disk space**.
 
 ## Key Capabilities
 
-1. **Smart Space Target Planner**: Set your target free space (e.g., `74 GB` for Bootcamp or VMs) and track live disk deficit and reclaimable space.
-2. **Verify-Before-Delete Cloud Offload**:
-   - Computes local **SHA-256** checksums before moving files or archived project snapshots.
-   - Supports **Google Drive**, **Apple iCloud Drive** (including native `brctl evict` on macOS), **Microsoft OneDrive**, **Dropbox**, and **3rd-Party Cloud Containers** (AWS S3, Cloudflare R2, Backblaze B2, Wasabi, WebDAV, `rclone`).
-   - Leaves a lightweight `.cloudstub` JSON receipt behind for 1-click verified restore.
-3. **System Cache & Project Build Cleaner**:
-   - Detects and cleans regenerable developer and browser caches (`~/Projects/*/src-tauri/target`, `node_modules`, `~/.npm`, `~/Library/Caches/Google`, `~/.cargo`, `Xcode/DerivedData`, `ms-playwright`, `pnpm`, Docker).
+1. **Space Target Planner**: Set your target free space (e.g., `74 GB` for Bootcamp or VMs) and inspect live disk telemetry.
+2. **Verified Local Vault Copying**:
+   - Computes local **SHA-256** checksums and creates collision-isolated vault copies in unique destination directories.
+   - Retains original source files intact.
+   - Rejects special files and symlinks. Includes every supported regular file when archiving directory trees.
+   - Verifies complete archive members against pre-copy snapshots and detects concurrent modifications.
+   - Leaves a `.cloudstub` JSON receipt recording source, vault destination, and checksum.
+3. **Safe, Overwrite-Protected Restore**:
+   - Restores exclusively into absent destinations; refuses to overwrite existing files, directories, or symlinks.
+   - Stages directory archive extractions in temporary directories and validates all archive paths against path traversal before moving into place.
+4. **System Cache Cleaner (Individual Review)**:
+   - Detects regenerable developer and application caches (`~/.npm`, `~/Library/Caches/Google`, `~/.cargo/registry`, `Xcode/DerivedData`, Homebrew, pip).
+   - Each cache can be reviewed and cleared individually. Bulk cleaning is disabled pending safety review.
 
 ## Quick Start
 
@@ -28,18 +37,18 @@ python space_guard_agent.py serve --port 7474
 
 ### CLI Commands
 ```bash
-# View live disk telemetry and connected cloud mounts
+# View live disk telemetry and detected local cloud vault paths
 python3 space_guard_agent.py status --target-gb 74
 
-# Scan system caches and large offloadable files/projects
+# Scan system caches and large local files/folders
 python3 space_guard_agent.py scan --min-mb 25
 
-# Verify SHA-256 and offload a file or project folder to Google Drive or iCloud Drive
-python3 space_guard_agent.py offload --file ~/Projects/BobFWTools-probe-241 --provider gdrive
+# Create a verified local vault copy (original retained; no space reclaimed)
+python3 space_guard_agent.py offload --file ~/Projects/MyProject --provider gdrive
 
-# Restore an offloaded item from its .cloudstub receipt
-python3 space_guard_agent.py restore --stub ~/Projects/BobFWTools-probe-241.cloudstub
+# Restore an item from its .cloudstub receipt into an absent destination
+python3 space_guard_agent.py restore --stub ~/Projects/MyProject.cloudstub
 
-# Safely purge regenerable build caches
-python3 space_guard_agent.py clean-cache --id projects_rust_targets
+# Safely purge a specific regenerable developer cache by ID
+python3 space_guard_agent.py clean-cache --id cargo_cache
 ```
