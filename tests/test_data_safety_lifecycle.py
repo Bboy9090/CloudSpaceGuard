@@ -3,9 +3,13 @@ import io
 import json
 import os
 import shutil
+import socketserver
 import tarfile
 import tempfile
+import threading
 import unittest
+import urllib.error
+import urllib.request
 from pathlib import Path
 from unittest.mock import patch
 
@@ -149,6 +153,117 @@ class DataSafetyLifecycleTests(unittest.TestCase):
         self.assertEqual((src / "v1.txt").read_text(), "v2 - new work", "Existing work must never be overwritten")
         self.assertTrue((src / "v2.txt").exists())
         self.assertTrue(stub_path.exists())
+
+    def test_bulk_clean_endpoint_disabled_fail_closed(self):
+        server = socketserver.TCPServer(("127.0.0.1", 0), guard.SpaceGuardRequestHandler)
+        port = server.server_address[1]
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{port}/api/clean-all-safe",
+                data=b"{}",
+                headers={
+                    "Content-Type": "application/json",
+                    "Origin": f"http://127.0.0.1:{port}",
+                },
+                method="POST",
+            )
+            with self.assertRaises(urllib.error.HTTPError) as err:
+                urllib.request.urlopen(req, timeout=5)
+            self.assertEqual(err.exception.code, 403)
+            payload = json.loads(err.exception.read().decode("utf-8"))
+            self.assertFalse(payload["ok"])
+            self.assertIn("disabled", payload["error"].lower())
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_risky_caches_marked_review_and_rejected_by_clean_safe_cache(self):
+        fake_home = self.root / "fake_home"
+        xdg_cache = fake_home / ".cache"
+        xdg_cache.mkdir(parents=True)
+        (xdg_cache / "session.bin").write_bytes(b"X" * (2 * 1024 * 1024))
+
+        proj_dir = fake_home / "Projects" / "demo_app"
+        nm_dir = proj_dir / "node_modules"
+        target_dir = proj_dir / "target"
+        nm_dir.mkdir(parents=True)
+        target_dir.mkdir(parents=True)
+        (nm_dir / "dep.js").write_bytes(b"Y" * (11 * 1024 * 1024))
+        (target_dir / "app.bin").write_bytes(b"Z" * (11 * 1024 * 1024))
+
+        with patch.object(Path, "home", return_value=fake_home):
+            caches = {c["id"]: c for c in guard.scan_system_caches(force_refresh=True)}
+            for risky_id in ("linux_xdg_cache", "projects_node_modules", "projects_rust_targets"):
+                self.assertIn(risky_id, caches)
+                self.assertEqual(caches[risky_id]["safe_level"], "review")
+                res = guard.clean_safe_cache(risky_id)
+                self.assertFalse(res["ok"])
+                self.assertIn("manual review", res["error"].lower())
+
+        self.assertTrue((xdg_cache / "session.bin").exists())
+        self.assertTrue((nm_dir / "dep.js").exists())
+        self.assertTrue((target_dir / "app.bin").exists())
+
+    def test_non_normalized_archive_paths_rejected_on_restore(self):
+        target = self.root / "proj"
+        for bad_name in ("proj/./secret.txt", "proj\\evil.txt"):
+            vault_archive = self.vault / f"{bad_name.replace('/', '_').replace(chr(92), '_')}.tar.gz"
+            with tarfile.open(vault_archive, "w:gz") as tar:
+                root_info = tarfile.TarInfo("proj")
+                root_info.type = tarfile.DIRTYPE
+                tar.addfile(root_info)
+                file_info = tarfile.TarInfo(bad_name)
+                payload = b"bad"
+                file_info.size = len(payload)
+                tar.addfile(file_info, io.BytesIO(payload))
+
+            stub_path = self.root / f"bad_{abs(hash(bad_name))}.cloudstub"
+            stub_path.write_text(
+                json.dumps(
+                    {
+                        "original_path": str(target),
+                        "cloud_vault_path": str(vault_archive),
+                        "sha256": guard.compute_sha256(vault_archive),
+                        "is_directory_archive": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            res = guard.restore_from_stub(str(stub_path))
+            self.assertFalse(res["ok"], f"Non-normalized archive member {bad_name} must be rejected")
+            self.assertFalse(target.exists())
+            self.assertTrue(stub_path.exists())
+
+    def test_clean_safe_cache_measures_actual_freed_bytes(self):
+        cache_dir = self.root / "mock_npm_cache"
+        cache_dir.mkdir()
+        (cache_dir / "pkg1.tgz").write_bytes(b"A" * 51200)
+        sub = cache_dir / "nested"
+        sub.mkdir()
+        (sub / "pkg2.tgz").write_bytes(b"B" * 40960)
+        expected_size = guard.dir_size_bytes(cache_dir)
+
+        mock_caches = [
+            {
+                "id": "npm_cache",
+                "name": "Node.js npm Package Cache",
+                "path": str(cache_dir),
+                "category": "Developer Cache",
+                "safe_level": "safe",
+                "clean_cmd": "npm cache clean --force",
+                "description": "Test cache",
+                "size_bytes": expected_size + 999999,  # Stale estimate must not be trusted
+            }
+        ]
+        with patch.object(guard, "scan_system_caches", return_value=mock_caches):
+            res = guard.clean_safe_cache("npm_cache")
+
+        self.assertTrue(res["ok"], f"clean_safe_cache failed: {res}")
+        self.assertEqual(res["freed_bytes"], expected_size)
+        self.assertEqual(res["after_bytes"], 0)
+        self.assertEqual(list(cache_dir.iterdir()), [])
 
 
 if __name__ == "__main__":

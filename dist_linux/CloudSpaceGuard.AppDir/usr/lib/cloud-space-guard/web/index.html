@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cloud Space Guard — Cross-Platform Multi-Cloud Offload &amp; Space Saver</title>
+  <title>Cloud Space Guard — Verified Local Vault Copy &amp; Cache Audit</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -251,7 +251,7 @@
             </span>
           </div>
           <p class="text-xs text-slate-400">
-            All-For-One Space Saver &amp; Cryptographic Multi-Cloud Offloader • Verify SHA-256 Before Delete
+            Verified Local Vault Copies (Originals Retained) &amp; Selective Cache Audit
           </p>
         </div>
       </div>
@@ -295,7 +295,7 @@
             </div>
             <div class="flex justify-between items-center text-xs text-slate-400 pt-1">
               <span id="deficit-status-text">Calculating space deficit...</span>
-              <span id="projected-gain-text" class="text-emerald-400 font-semibold">Selected Reclaimable: +0.0 GB</span>
+              <span id="projected-gain-text" class="text-emerald-400 font-semibold">Selected copies: 0.0 GB (originals retained)</span>
             </div>
           </div>
 
@@ -457,7 +457,7 @@
             <pre class="text-slate-300 overflow-x-auto"><code># Check disk &amp; cloud mounts for 74 GB Bootcamp goal
 python3 space_guard_agent.py status --target-gb 74
 
-# Verify SHA-256 &amp; offload file to Google Drive
+# Create a verified local vault copy in Google Drive folder (source retained)
 python3 space_guard_agent.py offload \
   --file ~/Downloads/large_archive.zip \
   --provider gdrive

@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 """
-Cloud Space Guard — All-For-One Cross-Platform Space Saver & Multi-Cloud Offload Agent
+Cloud Space Guard — Cross-Platform Local Vault Copy & Cache Audit Agent
 Supports: macOS, Windows, Linux, and ChromeOS (Chromebooks / Crostini)
 
 Features:
   1. Real-time Disk Telemetry & Target Free-Space Planner (e.g. 74 GB for Bootcamp / VMs)
-  2. Multi-Cloud Container Discovery & Custom 3rd-Party Cloud Connectors (Free & Paid Tiers):
-     - Google Drive (Desktop Mount, ChromeOS /mnt/chromeos/GoogleDrive, or rclone)
-     - iCloud Drive (macOS CloudDocs + native `brctl evict` cloud eviction, Windows iCloudDrive)
-     - Microsoft OneDrive & Dropbox
-     - S3-Compatible / R2 / Backblaze B2 / Wasabi / WebDAV / rclone remotes
-  3. Cryptographic Verify-Before-Delete (SHA-256 Checksum Verification + .cloudstub receipts)
-     - Supports both individual large files AND whole Project Snapshot folders (auto-archived to .tar.gz,
-       verified in cloud via SHA-256, and replaced with a .cloudstub receipt)
-  4. Safe Developer & System Cache Cleaner (Docker, Rust target/, node_modules/, Xcode, npm, pnpm, Cargo, Playwright, Pip)
-  5. Built-in Local Web Dashboard Server (http://127.0.0.1:7474) + Full CLI
+  2. Multi-Cloud Vault Folder Discovery & Custom Vault Connectors:
+     - Google Drive, iCloud Drive, Microsoft OneDrive, Dropbox, or custom local/mounted folders
+  3. Verified Local Vault Copy (SHA-256 Checksum Verification + .cloudstub receipts):
+     - Copies individual files or complete directory archives (.tar.gz) into the selected vault folder.
+     - Retains original source files/directories (a local sync folder does not prove remote cloud durability,
+       and keeping the source does not reclaim local disk space).
+  4. Developer & System Cache Audit and Selective Cache Cleaning
+  5. Built-in Local Web Dashboard Server (http://127.0.0.1:7474) + CLI
 """
 
 from __future__ import annotations
@@ -410,9 +408,9 @@ def scan_system_caches(force_refresh: bool = False) -> List[Dict[str, Any]]:
             "name": "Linux / Chromebook ~/.cache",
             "path": home / ".cache",
             "category": "System Cache",
-            "safe_level": "safe",
+            "safe_level": "review",
             "clean_cmd": "rm -rf ~/.cache/*",
-            "description": "Standard XDG user cache directory on Linux and ChromeOS.",
+            "description": "Standard XDG user cache directory on Linux and ChromeOS. Review before cleaning so active desktop/browser state is not disrupted.",
         },
     ]
 
@@ -448,7 +446,7 @@ def scan_system_caches(force_refresh: bool = False) -> List[Dict[str, Any]]:
                 "name": f"Rust/Tauri Build Targets ({len(rust_targets)} projects in ~/Projects)",
                 "path": str(home / "Projects" / "*/src-tauri/target"),
                 "category": "Regenerable Build Artifacts",
-                "safe_level": "safe",
+                "safe_level": "review",
                 "clean_cmd": "find ~/Projects -maxdepth 3 -name target -type d -exec rm -rf {} +",
                 "description": "Compiled intermediate Rust/Tauri binaries across your BobFWTools worktrees. Source code is NOT touched.",
                 "size_bytes": total_rust,
@@ -464,7 +462,7 @@ def scan_system_caches(force_refresh: bool = False) -> List[Dict[str, Any]]:
                 "name": f"Project node_modules Folders ({len(node_mods)} projects in ~/Projects)",
                 "path": str(home / "Projects" / "*/node_modules"),
                 "category": "Regenerable Dependencies",
-                "safe_level": "safe",
+                "safe_level": "review",
                 "clean_cmd": "find ~/Projects -maxdepth 3 -name node_modules -type d -prune -exec rm -rf {} +",
                 "description": "Installed npm/pnpm packages across old project worktrees. Reinstall anytime with `npm install` or `pnpm i`.",
                 "size_bytes": total_nm,
@@ -524,7 +522,7 @@ def scan_offload_candidates(min_size_mb: float = 25.0, force_refresh: bool = Fal
                         "size_formatted": f"{round(sz / (1024 ** 3), 2)} GB",
                         "modified": datetime.datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M"),
                         "already_in_cloud": None,
-                        "recommended_action": "Archive (.tar.gz) + SHA-256 Verify & Offload to Cloud Vault",
+                        "recommended_action": "Archive (.tar.gz) + SHA-256 Local Vault Copy (Source Retained)",
                     })
                     if len(candidates) >= 20:
                         break
@@ -574,9 +572,9 @@ def scan_offload_candidates(min_size_mb: float = 25.0, force_refresh: bool = Fal
                             "modified": datetime.datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M"),
                             "already_in_cloud": "icloud" if in_icloud else ("gdrive" if in_gdrive else None),
                             "recommended_action": (
-                                "Native Evict (brctl evict — already in iCloud)"
+                                "In iCloud Folder (Verify Local Vault Copy; Source Retained)"
                                 if in_icloud
-                                else ("Verify & Evict Local Cache (already in Google Drive)" if in_gdrive else "SHA-256 Verify & Offload to Cloud Vault")
+                                else ("In Google Drive Folder (Verify Local Vault Copy; Source Retained)" if in_gdrive else "SHA-256 Local Vault Copy (Source Retained)")
                             ),
                         })
                         if len(candidates) >= 75:
@@ -615,10 +613,24 @@ def _directory_snapshot(root: Path) -> Dict[str, Optional[str]]:
     return snapshot
 
 
+def _is_normalized_archive_member_path(name: str, expected_root: Optional[str] = None) -> bool:
+    cleaned = name.rstrip("/")
+    if not cleaned or cleaned.startswith("/") or "\\" in cleaned:
+        return False
+    raw_parts = cleaned.split("/")
+    if any(part in {"", ".", ".."} for part in raw_parts):
+        return False
+    if expected_root is not None and raw_parts[0] != expected_root:
+        return False
+    return True
+
+
 def _verify_directory_archive(archive: Path, expected: Dict[str, Optional[str]]) -> None:
     seen: Dict[str, Optional[str]] = {}
     with tarfile.open(archive, "r:gz") as tar:
         for member in tar:
+            if not _is_normalized_archive_member_path(member.name):
+                raise ValueError(f"Non-normalized or unsafe archive entry: {member.name}")
             name = member.name.rstrip("/")
             if name in seen or name not in expected:
                 raise ValueError(f"Unexpected or duplicate archive entry: {name}")
@@ -720,14 +732,16 @@ def verify_and_offload_file(
 
 
 def _safe_extract_tar(tar: tarfile.TarFile, target_dir: Path) -> None:
-    """Prevents CVE-2007-4559 path traversal (Tar-Slip) during archive restore."""
+    """Prevents CVE-2007-4559 path traversal (Tar-Slip) and rejects links/special files during restore."""
     resolved_root = target_dir.resolve()
     for member in tar.getmembers():
+        if not _is_normalized_archive_member_path(member.name):
+            raise ValueError(f"Blocked unsafe tar path traversal: {member.name}")
         member_path = (resolved_root / member.name).resolve()
         if not str(member_path).startswith(str(resolved_root) + os.sep) and member_path != resolved_root:
             raise ValueError(f"Blocked unsafe tar path traversal: {member.name}")
-        if member.issym() or member.islnk():
-            raise ValueError(f"Blocked symlink in cloud archive: {member.name}")
+        if member.issym() or member.islnk() or not (member.isfile() or member.isdir()):
+            raise ValueError(f"Blocked unsupported or link entry in archive: {member.name}")
     tar.extractall(path=resolved_root)
 
 
@@ -761,20 +775,19 @@ def restore_from_stub(stub_path_str: str) -> Dict[str, Any]:
                 with tarfile.open(cloud_file, "r:gz") as tar:
                     seen = set()
                     for member in tar.getmembers():
-                        parts = Path(member.name).parts
-                        if (not parts or parts[0] != expected_root or ".." in parts
-                                or member.name.startswith("/") or member.name in seen
-                                or not (member.isfile() or member.isdir())):
+                        if not _is_normalized_archive_member_path(member.name, expected_root=expected_root):
                             raise ValueError(f"Unsafe archive member: {member.name}")
-                        seen.add(member.name)
+                        norm_name = member.name.rstrip("/")
+                        if norm_name in seen or not (member.isfile() or member.isdir()):
+                            raise ValueError(f"Unsafe archive member: {member.name}")
+                        seen.add(norm_name)
                     _safe_extract_tar(tar, stage)
                 staged_root = stage / expected_root
                 if not staged_root.is_dir() or staged_root.is_symlink():
                     raise ValueError("Archive lacks the expected directory root.")
-                # mkdir is exclusive: no existing destination can be replaced.
-                orig_file.mkdir()
-                for child in staged_root.iterdir():
-                    shutil.move(str(child), str(orig_file / child.name))
+                if os.path.lexists(orig_file):
+                    return {"ok": False, "error": f"Restore destination already exists: {orig_file}"}
+                os.replace(staged_root, orig_file)
             restored_sha = remote_sha
         else:
             orig_file.parent.mkdir(parents=True, exist_ok=True)
@@ -801,7 +814,7 @@ def restore_from_stub(stub_path_str: str) -> Dict[str, Any]:
         stub_path.unlink()
         entry = {
             "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
-            "action": "restored_from_cloud",
+            "action": "restored_from_vault",
             "file_name": orig_file.name,
             "original_path": str(orig_file),
             "cloud_destination": str(cloud_file),
@@ -816,34 +829,7 @@ def restore_from_stub(stub_path_str: str) -> Dict[str, Any]:
 
 
 def clean_safe_cache(cache_id: str) -> Dict[str, Any]:
-    if cache_id in {"projects_rust_targets", "projects_node_modules"}:
-        target_name = "target" if cache_id == "projects_rust_targets" else "node_modules"
-        dirs = [p for p in discover_project_build_caches() if p.name == target_name]
-        freed_bytes = 0
-        for d in dirs:
-            sz = dir_size_bytes(d)
-            shutil.rmtree(d, ignore_errors=True)
-            if not d.exists():
-                freed_bytes += sz
-        entry = {
-            "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
-            "action": "cache_cleaned",
-            "file_name": f"~/Projects {target_name} ({len(dirs)} folders)",
-            "original_path": f"~/Projects/*/{target_name}",
-            "cloud_destination": "Local Regenerable Build Cache Purge",
-            "size_bytes": freed_bytes,
-            "sha256": "BUILD-CACHE-PURGE",
-            "verified": True,
-        }
-        append_ledger(entry)
-        return {
-            "ok": True,
-            "freed_bytes": freed_bytes,
-            "freed_mb": round(freed_bytes / (1024 ** 2), 1),
-            "entry": entry,
-        }
-
-    caches = {c["id"]: c for c in scan_system_caches()}
+    caches = {c["id"]: c for c in scan_system_caches(force_refresh=True)}
     target = caches.get(cache_id)
     if not target:
         return {"ok": False, "error": f"Cache target '{cache_id}' not found or already empty."}
@@ -851,26 +837,38 @@ def clean_safe_cache(cache_id: str) -> Dict[str, Any]:
     if target["safe_level"] != "safe":
         return {
             "ok": False,
-            "error": f"'{target['name']}' requires manual review ({target['clean_cmd']}) so active containers/VMs are not disrupted.",
+            "error": f"'{target['name']}' requires manual review ({target['clean_cmd']}) so active containers/VMs or project trees are not disrupted.",
         }
 
     path = Path(target["path"])
-    before_bytes = target["size_bytes"]
+    before_bytes = dir_size_bytes(path) if path.exists() else 0
+    errors: List[str] = []
     try:
         if path.is_dir():
-            for child in path.iterdir():
+            def _on_rm_error(func: Any, failed_path: str, exc_info: Any) -> None:
+                errors.append(f"{failed_path}: {exc_info[1]}")
+
+            for child in list(path.iterdir()):
                 if child.is_dir() and not child.is_symlink():
-                    shutil.rmtree(child, ignore_errors=True)
+                    shutil.rmtree(child, onerror=_on_rm_error)
                 else:
                     try:
                         child.unlink()
-                    except OSError:
-                        pass
+                    except OSError as exc:
+                        errors.append(f"{child}: {exc}")
+        after_bytes = dir_size_bytes(path) if path.exists() else 0
         # Invalidate in-memory cache so subsequent reads see freshly freed disk
         global _CACHE_TIMESTAMP, _CACHED_CACHES
         _CACHE_TIMESTAMP = 0.0
         _CACHED_CACHES = []
-        freed_bytes = before_bytes
+        freed_bytes = max(0, before_bytes - after_bytes)
+        if errors and freed_bytes == 0:
+            return {
+                "ok": False,
+                "error": f"Failed to clean cache: {errors[0]}",
+                "errors": errors,
+                "after_bytes": after_bytes,
+            }
         entry = {
             "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
             "action": "cache_cleaned",
@@ -879,13 +877,15 @@ def clean_safe_cache(cache_id: str) -> Dict[str, Any]:
             "cloud_destination": "Local Safe Cache Purge",
             "size_bytes": freed_bytes,
             "sha256": "CACHE-PURGE",
-            "verified": True,
+            "verified": len(errors) == 0,
         }
         append_ledger(entry)
         return {
             "ok": True,
             "freed_bytes": freed_bytes,
             "freed_mb": round(freed_bytes / (1024 ** 2), 1),
+            "after_bytes": after_bytes,
+            "partial_errors": errors,
             "entry": entry,
         }
     except Exception as exc:
@@ -1091,22 +1091,13 @@ class SpaceGuardRequestHandler(http.server.BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/api/clean-all-safe":
-            caches = scan_system_caches()
-            cleaned = []
-            total_freed_mb = 0.0
-            for c in caches:
-                if c.get("safe_level") == "safe" and c.get("size_mb", 0) > 0:
-                    r = clean_safe_cache(c["id"])
-                    if r.get("ok"):
-                        cleaned.append(c["name"])
-                        total_freed_mb += r.get("freed_mb", 0.0)
-            self._send_json({
-                "ok": True,
-                "cleaned_count": len(cleaned),
-                "cleaned_names": cleaned,
-                "freed_mb": round(total_freed_mb, 2),
-                "telemetry": get_disk_telemetry()
-            })
+            self._send_json(
+                {
+                    "ok": False,
+                    "error": "Bulk cache cleaning is disabled pending per-target safety qualification. Clean individual verified caches instead.",
+                },
+                status=403,
+            )
             return
 
         self._send_json({"ok": False, "error": "Unknown endpoint"}, status=404)
@@ -1120,7 +1111,7 @@ def run_server(port: int = DEFAULT_PORT) -> None:
     ensure_state_dir()
     with ThreadedTCPServer(("127.0.0.1", port), SpaceGuardRequestHandler) as httpd:
         print(f"==================================================================")
-        print(f"  Cloud Space Guard v{APP_VERSION} — Cross-Platform Space Saver")
+        print(f"  Cloud Space Guard v{APP_VERSION} — Verified Local Vault Copy & Cache Audit")
         print(f"  OS Profile : {detect_os_profile().upper()} ({platform.node()})")
         print(f"  Dashboard  : http://127.0.0.1:{port}")
         print(f"==================================================================")

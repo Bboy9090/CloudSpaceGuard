@@ -88,7 +88,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             defer: false
         )
         window.center()
-        window.title = "Cloud Space Guard — Multi-Cloud Offload & Space Saver"
+        window.title = "Cloud Space Guard — Verified Local Vault Copy & Cache Audit"
 
         let config = WKWebViewConfiguration()
         webView = WKWebView(frame: rect, configuration: config)
