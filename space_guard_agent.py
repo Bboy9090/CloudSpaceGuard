@@ -602,6 +602,43 @@ def compute_sha256(file_path: Path, chunk_size: int = 4 * 1024 * 1024) -> str:
     return h.hexdigest()
 
 
+def _directory_snapshot(root: Path) -> Dict[str, Optional[str]]:
+    """Record every regular file and directory; reject links and special files."""
+    snapshot: Dict[str, Optional[str]] = {root.name: None}
+    for base, dirs, files in os.walk(root, followlinks=False, onerror=lambda exc: (_ for _ in ()).throw(exc)):
+        for name in dirs + files:
+            item = Path(base) / name
+            relative = (Path(root.name) / item.relative_to(root)).as_posix()
+            if item.is_symlink() or not (item.is_file() or item.is_dir()):
+                raise ValueError(f"Unsupported link or special file: {item}")
+            snapshot[relative] = compute_sha256(item) if item.is_file() else None
+    return snapshot
+
+
+def _verify_directory_archive(archive: Path, expected: Dict[str, Optional[str]]) -> None:
+    seen: Dict[str, Optional[str]] = {}
+    with tarfile.open(archive, "r:gz") as tar:
+        for member in tar:
+            name = member.name.rstrip("/")
+            if name in seen or name not in expected:
+                raise ValueError(f"Unexpected or duplicate archive entry: {name}")
+            if member.isdir():
+                seen[name] = None
+            elif member.isfile():
+                stream = tar.extractfile(member)
+                if stream is None:
+                    raise ValueError(f"Unreadable archive entry: {name}")
+                digest = hashlib.sha256()
+                with stream:
+                    for chunk in iter(lambda: stream.read(4 * 1024 * 1024), b""):
+                        digest.update(chunk)
+                seen[name] = digest.hexdigest()
+            else:
+                raise ValueError(f"Unsupported archive entry: {name}")
+    if seen != expected:
+        raise ValueError("Archive does not match the complete source snapshot.")
+
+
 def verify_and_offload_file(
     file_path_str: str,
     provider_id: str = "gdrive",
@@ -644,14 +681,12 @@ def verify_and_offload_file(
         dest_dir.mkdir(parents=True, exist_ok=False)
         dest = dest_dir / (src.name + ".csg-archive.tar.gz" if src.is_dir() else src.name)
         if src.is_dir():
-            # Links and special files cannot be restored safely with the current format.
-            for base, dirs, files in os.walk(src, followlinks=False):
-                for name in dirs + files:
-                    item = Path(base) / name
-                    if item.is_symlink() or not (item.is_file() or item.is_dir()):
-                        raise ValueError(f"Unsupported link or special file: {item}")
+            snapshot = _directory_snapshot(src)
             with tarfile.open(dest, "x:gz") as tar:
                 tar.add(src, arcname=src.name, recursive=True)
+            _verify_directory_archive(dest, snapshot)
+            if _directory_snapshot(src) != snapshot:
+                raise ValueError("Source directory changed during archive creation.")
             digest = compute_sha256(dest)
         else:
             digest = compute_sha256(src)
@@ -717,7 +752,30 @@ def restore_from_stub(stub_path_str: str) -> Dict[str, Any]:
             }
 
         if meta.get("is_directory_archive"):
-            return {"ok": False, "error": "Directory restore is temporarily disabled until overwrite-safe extraction is available."}
+            if os.path.lexists(orig_file):
+                return {"ok": False, "error": f"Restore destination already exists: {orig_file}"}
+            expected_root = orig_file.name
+            orig_file.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(prefix="csg-restore-", dir=orig_file.parent) as staging:
+                stage = Path(staging)
+                with tarfile.open(cloud_file, "r:gz") as tar:
+                    seen = set()
+                    for member in tar.getmembers():
+                        parts = Path(member.name).parts
+                        if (not parts or parts[0] != expected_root or ".." in parts
+                                or member.name.startswith("/") or member.name in seen
+                                or not (member.isfile() or member.isdir())):
+                            raise ValueError(f"Unsafe archive member: {member.name}")
+                        seen.add(member.name)
+                    _safe_extract_tar(tar, stage)
+                staged_root = stage / expected_root
+                if not staged_root.is_dir() or staged_root.is_symlink():
+                    raise ValueError("Archive lacks the expected directory root.")
+                # mkdir is exclusive: no existing destination can be replaced.
+                orig_file.mkdir()
+                for child in staged_root.iterdir():
+                    shutil.move(str(child), str(orig_file / child.name))
+            restored_sha = remote_sha
         else:
             orig_file.parent.mkdir(parents=True, exist_ok=True)
             # Exclusive creation also rejects dangling symlinks and concurrent
