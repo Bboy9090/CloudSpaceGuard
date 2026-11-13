@@ -34,6 +34,7 @@ import sys
 import tarfile
 import tempfile
 import urllib.parse
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -607,188 +608,80 @@ def verify_and_offload_file(
     leave_stub: bool = True,
     dry_run: bool = False,
 ) -> Dict[str, Any]:
-    # A checksum of a local sync folder does not establish remote durability.
-    # The legacy implementation deletes sources and can overwrite vault copies.
-    # Keep previews available while the destructive operation is redesigned.
-    if not dry_run:
-        return {"ok": False, "error": "Offload is temporarily disabled to protect your files. Dry-run previews remain available."}
-    src = Path(file_path_str).expanduser().resolve()
-    if not src.exists():
-        return {"ok": False, "error": f"Path not found: {src}"}
+    """Create a verified local vault copy; never delete the original.
 
+    A mounted sync directory cannot prove remote upload or durability. This
+    operation therefore does not reclaim local space and must not claim to.
+    """
+    if not file_path_str:
+        return {"ok": False, "error": "A source path is required."}
+    source_input = Path(file_path_str).expanduser()
+    if source_input.is_symlink():
+        return {"ok": False, "error": "Symlink sources are not supported."}
+    src = source_input.resolve()
+    if not src.exists() or not (src.is_file() or src.is_dir()):
+        return {"ok": False, "error": f"Source not found or unsupported: {src}"}
     providers = {p["id"]: p for p in discover_cloud_providers()}
-    provider = providers.get(provider_id) or providers.get("gdrive")
+    provider = providers.get(provider_id)
     if not provider:
         return {"ok": False, "error": f"Unknown cloud provider: {provider_id}"}
-
-    vault_root = Path(provider["vault_path"]).expanduser()
-    dest_dir = vault_root / src.parent.name
-    stub_file = Path(f"{src}.cloudstub")
-
-    # Handle Directory Offload (packages source code excluding regenerable target/ & node_modules/ into a verified .tar.gz in Cloud Vault)
-    if src.is_dir():
-        total_dir_bytes = dir_size_bytes(src)
-        archive_name = f"{src.name}.csg-archive.tar.gz"
-        dest_file = dest_dir / archive_name
-        if dry_run:
-            return {
-                "ok": True,
-                "mode": "dry_run_directory",
-                "file_name": src.name,
-                "size_bytes": total_dir_bytes,
-                "local_sha256": "DIRECTORY-ARCHIVE-SHA256-ON-BUILD",
-                "cloud_destination": str(dest_file),
-                "stub_path": str(stub_file),
-            }
-        try:
-            dest_dir.mkdir(parents=True, exist_ok=True)
-            with tempfile.NamedTemporaryFile(prefix=f"{src.name}_", suffix=".tar.gz", delete=False) as tmp:
-                tmp_archive = Path(tmp.name)
-
-            def _exclude_heavy_caches(tarinfo: tarfile.TarInfo) -> Optional[tarfile.TarInfo]:
-                parts = Path(tarinfo.name).parts
-                if "target" in parts or "node_modules" in parts:
-                    return None
-                return tarinfo
-
-            with tarfile.open(tmp_archive, "w:gz") as tar:
-                tar.add(str(src), arcname=src.name, filter=_exclude_heavy_caches)
-
-            local_sha256 = compute_sha256(tmp_archive)
-            shutil.copy2(tmp_archive, dest_file)
-            tmp_archive.unlink(missing_ok=True)
-
-            remote_sha256 = compute_sha256(dest_file)
-            if remote_sha256 != local_sha256:
-                return {
-                    "ok": False,
-                    "error": f"SHA-256 mismatch on archive! Local={local_sha256[:12]} Remote={remote_sha256[:12]}. Directory NOT deleted.",
-                }
-
-            stub_payload = {
-                "schema": "cloud-space-guard.stub/v1",
-                "is_directory_archive": True,
-                "original_name": src.name,
-                "original_path": str(src),
-                "cloud_provider_id": provider["id"],
-                "cloud_provider_name": provider["name"],
-                "cloud_vault_path": str(dest_file),
-                "size_bytes": total_dir_bytes,
-                "archive_size_bytes": dest_file.stat().st_size,
-                "sha256": local_sha256,
-                "offloaded_at": datetime.datetime.now().isoformat(timespec="seconds"),
-                "restore_command": f"python3 '{Path(__file__).resolve()}' restore --stub '{stub_file}'",
-            }
-            if leave_stub:
-                stub_file.write_text(json.dumps(stub_payload, indent=2), encoding="utf-8")
-
-            shutil.rmtree(src)
-
-            entry = {
-                "timestamp": stub_payload["offloaded_at"],
-                "action": "verified_directory_offload",
-                "file_name": src.name,
-                "original_path": str(src),
-                "cloud_destination": str(dest_file),
-                "stub_path": str(stub_file) if leave_stub else None,
-                "provider_id": provider["id"],
-                "provider_name": provider["name"],
-                "size_bytes": total_dir_bytes,
-                "sha256": local_sha256,
-                "verified": True,
-            }
-            append_ledger(entry)
-            return {"ok": True, "mode": "verified_directory_offload", "entry": entry}
-        except Exception as exc:
-            return {"ok": False, "error": str(exc)}
-
-    # Standard single-file offload
-    size_bytes = src.stat().st_size
-    local_sha256 = compute_sha256(src)
-
-    if "com~apple~CloudDocs" in str(src) and detect_os_profile() == "macos" and not dry_run:
-        proc = subprocess.run(["brctl", "evict", str(src)], capture_output=True, text=True)
-        if proc.returncode == 0:
-            entry = {
-                "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
-                "action": "icloud_native_evict",
-                "file_name": src.name,
-                "original_path": str(src),
-                "cloud_destination": f"iCloud Drive ({src})",
-                "provider_id": "icloud",
-                "size_bytes": size_bytes,
-                "sha256": local_sha256,
-                "verified": True,
-            }
-            append_ledger(entry)
-            return {"ok": True, "mode": "brctl_evict", "entry": entry}
-
-    dest_file = dest_dir / src.name
-
+    vault = Path(provider["vault_path"]).expanduser().resolve()
+    if src == vault or (src.is_dir() and vault.is_relative_to(src)):
+        return {"ok": False, "error": "Vault cannot be inside the source directory."}
+    receipt = Path(f"{src}.cloudstub")
+    if leave_stub and os.path.lexists(receipt):
+        return {"ok": False, "error": f"Receipt already exists: {receipt}"}
     if dry_run:
-        return {
-            "ok": True,
-            "mode": "dry_run",
-            "file_name": src.name,
-            "size_bytes": size_bytes,
-            "local_sha256": local_sha256,
-            "cloud_destination": str(dest_file),
-            "stub_path": str(stub_file),
-        }
-
+        return {"ok": True, "mode": "dry_run", "file_name": src.name,
+                "local_sha256": compute_sha256(src) if src.is_file() else None,
+                "cloud_destination": str(vault), "stub_path": str(receipt),
+                "source_retained": True, "remote_durability_verified": False}
+    dest = None
+    receipt_created = False
     try:
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        if dest_file.exists() and dest_file.stat().st_size == size_bytes:
-            remote_sha256 = compute_sha256(dest_file)
-            if remote_sha256 != local_sha256:
-                shutil.copy2(src, dest_file)
-                remote_sha256 = compute_sha256(dest_file)
+        vault.mkdir(parents=True, exist_ok=True)
+        dest_dir = vault / "cloud-space-guard" / uuid.uuid4().hex
+        dest_dir.mkdir(parents=True, exist_ok=False)
+        dest = dest_dir / (src.name + ".csg-archive.tar.gz" if src.is_dir() else src.name)
+        if src.is_dir():
+            # Links and special files cannot be restored safely with the current format.
+            for base, dirs, files in os.walk(src, followlinks=False):
+                for name in dirs + files:
+                    item = Path(base) / name
+                    if item.is_symlink() or not (item.is_file() or item.is_dir()):
+                        raise ValueError(f"Unsupported link or special file: {item}")
+            with tarfile.open(dest, "x:gz") as tar:
+                tar.add(src, arcname=src.name, recursive=True)
+            digest = compute_sha256(dest)
         else:
-            shutil.copy2(src, dest_file)
-            remote_sha256 = compute_sha256(dest_file)
-
-        if remote_sha256 != local_sha256:
-            return {
-                "ok": False,
-                "error": f"SHA-256 mismatch! Local={local_sha256[:12]}... Remote={remote_sha256[:12]}... Local file was NOT deleted.",
-            }
-
-        stub_payload = {
-            "schema": "cloud-space-guard.stub/v1",
-            "is_directory_archive": False,
-            "original_name": src.name,
-            "original_path": str(src),
-            "cloud_provider_id": provider["id"],
-            "cloud_provider_name": provider["name"],
-            "cloud_vault_path": str(dest_file),
-            "size_bytes": size_bytes,
-            "sha256": local_sha256,
-            "offloaded_at": datetime.datetime.now().isoformat(timespec="seconds"),
-            "restore_command": f"python3 '{Path(__file__).resolve()}' restore --stub '{stub_file}'",
-        }
-
+            digest = compute_sha256(src)
+            with src.open("rb") as source, dest.open("xb") as target:
+                shutil.copyfileobj(source, target)
+            if compute_sha256(dest) != digest or compute_sha256(src) != digest:
+                raise ValueError("Source or copied file changed during verification.")
+        payload = {"schema": "cloud-space-guard.stub/v1", "is_directory_archive": src.is_dir(),
+                   "original_name": src.name, "original_path": str(src),
+                   "cloud_provider_id": provider["id"], "cloud_provider_name": provider["name"],
+                   "cloud_vault_path": str(dest), "size_bytes": src.stat().st_size if src.is_file() else None,
+                   "sha256": digest, "offloaded_at": datetime.datetime.now().isoformat(timespec="seconds"),
+                   "remote_durability_verified": False, "source_retained": True}
         if leave_stub:
-            stub_file.write_text(json.dumps(stub_payload, indent=2), encoding="utf-8")
-
-        src.unlink()
-
-        entry = {
-            "timestamp": stub_payload["offloaded_at"],
-            "action": "verified_cloud_offload",
-            "file_name": src.name,
-            "original_path": str(src),
-            "cloud_destination": str(dest_file),
-            "stub_path": str(stub_file) if leave_stub else None,
-            "provider_id": provider["id"],
-            "provider_name": provider["name"],
-            "size_bytes": size_bytes,
-            "sha256": local_sha256,
-            "verified": True,
-        }
+            with receipt.open("x", encoding="utf-8") as stream:
+                receipt_created = True
+                json.dump(payload, stream, indent=2)
+        entry = {"timestamp": payload["offloaded_at"], "action": "verified_local_vault_copy",
+                 "file_name": src.name, "original_path": str(src), "cloud_destination": str(dest),
+                 "stub_path": str(receipt) if leave_stub else None, "provider_id": provider["id"],
+                 "provider_name": provider["name"], "sha256": digest, "verified": True,
+                 "remote_durability_verified": False, "source_retained": True}
         append_ledger(entry)
-        return {"ok": True, "mode": "verified_offload", "entry": entry}
+        return {"ok": True, "mode": "verified_local_vault_copy", "entry": entry,
+                "source_retained": True, "remote_durability_verified": False,
+                "message": "Local vault copy verified; source retained. Cloud upload is not verified and no space was reclaimed."}
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        # Preserve any copy on failure for manual recovery. Never remove source or receipt.
+        return {"ok": False, "error": str(exc), "source_retained": True,
+                "partial_copy": str(dest) if dest else None, "receipt_created": receipt_created}
 
 
 def _safe_extract_tar(tar: tarfile.TarFile, target_dir: Path) -> None:
