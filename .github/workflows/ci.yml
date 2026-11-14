@@ -37,7 +37,9 @@ jobs:
         run: |
           python -m unittest -v \
             tests.test_offload_safety_regressions \
-            tests.test_data_safety_lifecycle
+            tests.test_data_safety_lifecycle \
+            tests.test_directory_restore_race \
+            tests.test_file_restore_race
       - name: Verify non-destructive CLI smoke
         run: |
           python space_guard_agent.py status --target-gb 1 > /tmp/csg-status.json
@@ -56,3 +58,16 @@ jobs:
         run: |
           python -m unittest -v \
             test_store_audit.TestCloudSpaceGuardEndToEnd.test_09_macos_app_store_bundle_and_privacy_manifest
+
+  restore-race-platforms:
+    strategy:
+      matrix:
+        os: [macos-15, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify exclusive directory restore
+        run: python -m unittest -v tests.test_directory_restore_race tests.test_file_restore_race
