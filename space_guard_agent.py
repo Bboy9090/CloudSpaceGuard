@@ -824,25 +824,20 @@ def restore_from_stub(stub_path_str: str) -> Dict[str, Any]:
             restored_sha = remote_sha
         else:
             orig_file.parent.mkdir(parents=True, exist_ok=True)
-            # Exclusive creation also rejects dangling symlinks and concurrent
-            # creators instead of overwriting newly created local work.
-            try:
-                destination = orig_file.open("xb")
-            except FileExistsError:
-                return {"ok": False, "error": f"Restore destination already exists: {orig_file}"}
-            try:
-                with destination, cloud_file.open("rb") as source:
+            # Stage in a private directory on the target filesystem. Publish
+            # with an atomic exclusive hard link; never unlink the target path
+            # on failure, as another process may have created or replaced it.
+            with tempfile.TemporaryDirectory(prefix="csg-file-restore-", dir=orig_file.parent) as staging:
+                staged = Path(staging) / "content"
+                with cloud_file.open("rb") as source, staged.open("xb") as destination:
                     shutil.copyfileobj(source, destination)
-            except Exception:
-                orig_file.unlink(missing_ok=True)
-                raise
-            restored_sha = compute_sha256(orig_file)
-            if restored_sha != meta.get("sha256"):
-                orig_file.unlink(missing_ok=True)
-                return {
-                    "ok": False,
-                    "error": f"Local write SHA-256 verification failed! Expected {meta.get('sha256')}, got {restored_sha}",
-                }
+                restored_sha = compute_sha256(staged)
+                if restored_sha != meta.get("sha256"):
+                    return {"ok": False, "error": "Staged restore failed SHA-256 verification."}
+                try:
+                    os.link(staged, orig_file)
+                except FileExistsError:
+                    return {"ok": False, "error": f"Restore destination already exists: {orig_file}"}
 
         stub_path.unlink()
         entry = {
