@@ -31,6 +31,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 import urllib.parse
 import uuid
 from pathlib import Path
@@ -113,6 +114,9 @@ def get_disk_telemetry(target_gb: Optional[float] = None) -> Dict[str, Any]:
         "os_profile": detect_os_profile(),
         "hostname": platform.node(),
         "mount_path": str(check_path),
+        "total_bytes": usage.total,
+        "used_bytes": usage.total - usage.free,
+        "free_bytes": usage.free,
         "total_gb": total_gb,
         "used_gb": used_gb,
         "free_gb": free_gb,
@@ -121,6 +125,68 @@ def get_disk_telemetry(target_gb: Optional[float] = None) -> Dict[str, Any]:
         "deficit_gb": needed_gb,
         "target_met": free_gb >= target,
     }
+
+
+_JOB_LOCK = threading.Lock()
+_ACTIVE_JOBS: Dict[str, Dict[str, Any]] = {}
+
+
+def _start_job(kind: str, target: str, phase: str, bytes_total: int = 0) -> str:
+    job_id = uuid.uuid4().hex[:12]
+    with _JOB_LOCK:
+        # Keep only active jobs and the 10 most recent finished jobs
+        if len(_ACTIVE_JOBS) > 15:
+            finished = [k for k, v in _ACTIVE_JOBS.items() if v.get("done")]
+            for k in finished[:-10]:
+                _ACTIVE_JOBS.pop(k, None)
+        _ACTIVE_JOBS[job_id] = {
+            "id": job_id,
+            "kind": kind,
+            "target": target,
+            "phase": phase,
+            "detail": "",
+            "started_at": time.time(),
+            "updated_at": time.time(),
+            "bytes_done": 0,
+            "bytes_total": bytes_total,
+            "items_done": 0,
+            "items_total": 0,
+            "done": False,
+            "ok": None,
+        }
+    return job_id
+
+
+def _update_job(job_id: str, **fields: Any) -> None:
+    with _JOB_LOCK:
+        job = _ACTIVE_JOBS.get(job_id)
+        if job is not None:
+            job.update(fields)
+            job["updated_at"] = time.time()
+
+
+def _finish_job(job_id: str, ok: bool, phase: str, detail: str = "") -> None:
+    with _JOB_LOCK:
+        job = _ACTIVE_JOBS.get(job_id)
+        if job is not None:
+            job["done"] = True
+            job["ok"] = ok
+            job["phase"] = phase
+            if detail:
+                job["detail"] = detail
+            job["updated_at"] = time.time()
+
+
+def get_active_jobs() -> List[Dict[str, Any]]:
+    now = time.time()
+    with _JOB_LOCK:
+        jobs = []
+        for j in _ACTIVE_JOBS.values():
+            copy = dict(j)
+            copy["elapsed_sec"] = round(max(0.0, (copy["updated_at"] if copy["done"] else now) - copy["started_at"]), 2)
+            jobs.append(copy)
+        jobs.sort(key=lambda x: x["started_at"], reverse=True)
+        return jobs[:12]
 
 
 def discover_cloud_providers() -> List[Dict[str, Any]]:
@@ -326,7 +392,7 @@ def scan_system_caches(force_refresh: bool = False) -> List[Dict[str, Any]]:
             "id": "docker_data",
             "name": "Docker Desktop VM & Container Layers",
             "path": home / "Library" / "Containers" / "com.docker.docker",
-            "category": "Container Virtual Disk (31 GB)",
+            "category": "Container Virtual Disk",
             "safe_level": "review",
             "clean_cmd": "docker system prune -a --volumes -f",
             "description": "Docker virtual disk (Docker.raw) & cached container layers. Prune unused images/volumes or reduce VM disk limit in Docker Settings.",
@@ -681,10 +747,22 @@ def verify_and_offload_file(
     if leave_stub and os.path.lexists(receipt):
         return {"ok": False, "error": f"Receipt already exists: {receipt}"}
     if dry_run:
-        return {"ok": True, "mode": "dry_run", "file_name": src.name,
-                "local_sha256": compute_sha256(src) if src.is_file() else None,
-                "cloud_destination": str(vault), "stub_path": str(receipt),
-                "source_retained": True, "remote_durability_verified": False}
+        job_id = _start_job("hash_check", str(src), "Computing SHA-256 preview")
+        try:
+            source_bytes = src.stat().st_size if src.is_file() else dir_size_bytes(src)
+            digest = compute_sha256(src) if src.is_file() else None
+            _finish_job(job_id, True, "Dry-run hash check complete", f"{src.name} ({round(source_bytes / (1024 ** 2), 1)} MB)")
+            return {"ok": True, "mode": "dry_run", "file_name": src.name,
+                    "original_path": str(src), "size_bytes": source_bytes,
+                    "local_sha256": digest, "is_directory": src.is_dir(),
+                    "cloud_destination": str(vault), "stub_path": str(receipt),
+                    "source_retained": True, "remote_durability_verified": False}
+        except Exception as exc:
+            _finish_job(job_id, False, "Dry-run failed", str(exc))
+            return {"ok": False, "error": str(exc)}
+    telemetry_before = get_disk_telemetry()
+    source_bytes = src.stat().st_size if src.is_file() else dir_size_bytes(src)
+    job_id = _start_job("vault_copy", str(src), "Preparing local vault copy", bytes_total=source_bytes)
     dest = None
     receipt_created = False
     try:
@@ -693,23 +771,33 @@ def verify_and_offload_file(
         dest_dir.mkdir(parents=True, exist_ok=False)
         dest = dest_dir / (src.name + ".csg-archive.tar.gz" if src.is_dir() else src.name)
         if src.is_dir():
+            _update_job(job_id, phase="Snapshotting directory & hashing files", detail=src.name)
             snapshot = _directory_snapshot(src)
+            _update_job(job_id, phase="Creating compressed .tar.gz archive", detail=str(dest))
             with tarfile.open(dest, "x:gz") as tar:
                 tar.add(src, arcname=src.name, recursive=True)
+            _update_job(job_id, phase="Verifying archive against snapshot", detail=dest.name)
             _verify_directory_archive(dest, snapshot)
             if _directory_snapshot(src) != snapshot:
                 raise ValueError("Source directory changed during archive creation.")
+            _update_job(job_id, phase="Computing archive SHA-256", detail=dest.name)
             digest = compute_sha256(dest)
         else:
+            _update_job(job_id, phase="Computing source SHA-256", detail=src.name)
             digest = compute_sha256(src)
+            _update_job(job_id, phase="Copying bytes to local vault", detail=str(dest))
             with src.open("rb") as source, dest.open("xb") as target:
                 shutil.copyfileobj(source, target)
+            _update_job(job_id, phase="Verifying copied file SHA-256", detail=dest.name)
             if compute_sha256(dest) != digest or compute_sha256(src) != digest:
                 raise ValueError("Source or copied file changed during verification.")
+        vault_bytes = dest.stat().st_size
+        _update_job(job_id, phase="Writing receipt & ledger", bytes_done=source_bytes)
         payload = {"schema": "cloud-space-guard.stub/v1", "is_directory_archive": src.is_dir(),
                    "original_name": src.name, "original_path": str(src),
                    "cloud_provider_id": provider["id"], "cloud_provider_name": provider["name"],
-                   "cloud_vault_path": str(dest), "size_bytes": src.stat().st_size if src.is_file() else None,
+                   "cloud_vault_path": str(dest), "size_bytes": vault_bytes,
+                   "source_bytes": source_bytes,
                    "sha256": digest, "offloaded_at": datetime.datetime.now().isoformat(timespec="seconds"),
                    "remote_durability_verified": False, "source_retained": True}
         if leave_stub:
@@ -719,13 +807,22 @@ def verify_and_offload_file(
         entry = {"timestamp": payload["offloaded_at"], "action": "verified_local_vault_copy",
                  "file_name": src.name, "original_path": str(src), "cloud_destination": str(dest),
                  "stub_path": str(receipt) if leave_stub else None, "provider_id": provider["id"],
-                 "provider_name": provider["name"], "sha256": digest, "verified": True,
+                 "provider_name": provider["name"], "size_bytes": vault_bytes,
+                 "source_bytes": source_bytes, "sha256": digest, "verified": True,
                  "remote_durability_verified": False, "source_retained": True}
         append_ledger(entry)
+        global _CACHED_CANDIDATES
+        _CACHED_CANDIDATES = []
+        telemetry_after = get_disk_telemetry()
+        _finish_job(job_id, True, "Verified local vault copy complete", f"{src.name} -> {dest.name}")
         return {"ok": True, "mode": "verified_local_vault_copy", "entry": entry,
+                "size_bytes": vault_bytes, "source_bytes": source_bytes,
+                "telemetry_before": telemetry_before, "telemetry_after": telemetry_after,
+                "disk_free_delta_bytes": telemetry_after["free_bytes"] - telemetry_before["free_bytes"],
                 "source_retained": True, "remote_durability_verified": False,
                 "message": "Local vault copy verified; source retained. Cloud upload is not verified and no space was reclaimed."}
     except Exception as exc:
+        _finish_job(job_id, False, "Vault copy failed", str(exc))
         # Preserve any copy on failure for manual recovery. Never remove source or receipt.
         return {"ok": False, "error": str(exc), "source_retained": True,
                 "partial_copy": str(dest) if dest else None, "receipt_created": receipt_created}
@@ -823,7 +920,74 @@ def restore_from_stub(stub_path_str: str) -> Dict[str, Any]:
             "verified": True,
         }
         append_ledger(entry)
-        return {"ok": True, "entry": entry}
+        telemetry_after = get_disk_telemetry()
+        return {"ok": True, "entry": entry, "telemetry_after": telemetry_after}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def inspect_cache_target(cache_id: str, limit: int = 30) -> Dict[str, Any]:
+    caches = {c["id"]: c for c in scan_system_caches()}
+    target = caches.get(cache_id)
+    if not target:
+        return {"ok": False, "error": f"Cache target '{cache_id}' not found or already empty."}
+    path = Path(target["path"])
+    if not path.exists() or not path.is_dir():
+        return {"ok": True, "id": cache_id, "name": target["name"], "path": str(path), "total_items": 0, "items": []}
+    entries: List[Dict[str, Any]] = []
+    try:
+        children = list(path.iterdir())
+    except OSError as exc:
+        return {"ok": False, "error": str(exc)}
+    for child in children:
+        if child.is_symlink():
+            sz = 0
+        elif child.is_dir():
+            sz = dir_size_bytes(child, max_entries=5000)
+        else:
+            try:
+                sz = child.stat().st_size
+            except OSError:
+                sz = 0
+        entries.append({
+            "name": child.name,
+            "path": str(child),
+            "is_dir": child.is_dir(),
+            "size_bytes": sz,
+            "size_mb": round(sz / (1024 ** 2), 2),
+        })
+    entries.sort(key=lambda x: x["size_bytes"], reverse=True)
+    return {
+        "ok": True,
+        "id": cache_id,
+        "name": target["name"],
+        "path": str(path),
+        "safe_level": target["safe_level"],
+        "total_items": len(entries),
+        "items": entries[:limit],
+    }
+
+
+def reveal_local_path(path_str: str) -> Dict[str, Any]:
+    if not path_str:
+        return {"ok": False, "error": "Path is required."}
+    target = Path(path_str).expanduser()
+    if not target.exists():
+        return {"ok": False, "error": f"Path does not exist: {target}"}
+    sys_name = platform.system().lower()
+    try:
+        if sys_name == "darwin":
+            cmd = ["open", "-R", str(target)] if target.is_file() else ["open", str(target)]
+            subprocess.Popen(cmd)
+        elif sys_name == "windows":
+            if target.is_file():
+                subprocess.Popen(["explorer", f"/select,{target}"])
+            else:
+                subprocess.Popen(["explorer", str(target)])
+        else:
+            open_target = target.parent if target.is_file() else target
+            subprocess.Popen(["xdg-open", str(open_target)])
+        return {"ok": True, "path": str(target)}
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
 
@@ -841,54 +1005,98 @@ def clean_safe_cache(cache_id: str) -> Dict[str, Any]:
         }
 
     path = Path(target["path"])
+    telemetry_before = get_disk_telemetry()
     before_bytes = dir_size_bytes(path) if path.exists() else 0
+    job_id = _start_job("clean_cache", target["name"], "Scanning cache items", bytes_total=before_bytes)
     errors: List[str] = []
+    deleted_items: List[Dict[str, Any]] = []
+    deleted_count = 0
     try:
         if path.is_dir():
+            children = list(path.iterdir())
+            _update_job(job_id, items_total=len(children), phase="Deleting cache entries")
+
             def _on_rm_error(func: Any, failed_path: str, exc_info: Any) -> None:
                 errors.append(f"{failed_path}: {exc_info[1]}")
 
-            for child in list(path.iterdir()):
-                if child.is_dir() and not child.is_symlink():
+            for idx, child in enumerate(children, 1):
+                _update_job(job_id, items_done=idx, detail=child.name)
+                child_is_dir = child.is_dir() and not child.is_symlink()
+                child_size = dir_size_bytes(child, max_entries=2000) if child_is_dir else (
+                    child.stat().st_size if child.exists() and not child.is_symlink() else 0
+                )
+                err_before = len(errors)
+                if child_is_dir:
                     shutil.rmtree(child, onerror=_on_rm_error)
                 else:
                     try:
                         child.unlink()
                     except OSError as exc:
                         errors.append(f"{child}: {exc}")
+                if len(errors) == err_before and not os.path.lexists(child):
+                    deleted_count += 1
+                    if len(deleted_items) < 50:
+                        deleted_items.append({
+                            "name": child.name,
+                            "path": str(child),
+                            "is_dir": child_is_dir,
+                            "size_bytes": child_size,
+                        })
         after_bytes = dir_size_bytes(path) if path.exists() else 0
         # Invalidate in-memory cache so subsequent reads see freshly freed disk
-        global _CACHE_TIMESTAMP, _CACHED_CACHES
+        global _CACHE_TIMESTAMP, _CACHED_CACHES, _CACHED_CANDIDATES
         _CACHE_TIMESTAMP = 0.0
         _CACHED_CACHES = []
+        _CACHED_CANDIDATES = []
         freed_bytes = max(0, before_bytes - after_bytes)
-        if errors and freed_bytes == 0:
+        telemetry_after = get_disk_telemetry()
+        if errors and freed_bytes == 0 and deleted_count == 0:
+            _finish_job(job_id, False, "Cache clean failed", errors[0])
             return {
                 "ok": False,
                 "error": f"Failed to clean cache: {errors[0]}",
                 "errors": errors,
                 "after_bytes": after_bytes,
+                "telemetry_before": telemetry_before,
+                "telemetry_after": telemetry_after,
             }
         entry = {
             "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
             "action": "cache_cleaned",
             "file_name": target["name"],
             "original_path": str(path),
-            "cloud_destination": "Local Safe Cache Purge",
+            "cloud_destination": f"Local Safe Cache Purge ({deleted_count} item(s) removed)",
             "size_bytes": freed_bytes,
             "sha256": "CACHE-PURGE",
             "verified": len(errors) == 0,
         }
         append_ledger(entry)
+        _finish_job(
+            job_id,
+            True,
+            "Cache cleaned",
+            f"Removed {deleted_count} item(s), reclaimed {round(freed_bytes / (1024 ** 2), 1)} MB",
+        )
         return {
             "ok": True,
+            "cache_id": cache_id,
+            "cache_name": target["name"],
+            "cache_path": str(path),
+            "before_bytes": before_bytes,
             "freed_bytes": freed_bytes,
             "freed_mb": round(freed_bytes / (1024 ** 2), 1),
             "after_bytes": after_bytes,
+            "deleted_count": deleted_count,
+            "deleted_items": deleted_items,
+            "failed_count": len(errors),
             "partial_errors": errors,
+            "telemetry_before": telemetry_before,
+            "telemetry_after": telemetry_after,
+            "disk_free_delta_bytes": telemetry_after["free_bytes"] - telemetry_before["free_bytes"],
             "entry": entry,
         }
     except Exception as exc:
+        _finish_job(job_id, False, "Cache clean failed", str(exc))
         return {"ok": False, "error": str(exc)}
 
 
@@ -971,26 +1179,39 @@ class SpaceGuardRequestHandler(http.server.BaseHTTPRequestHandler):
 
         if parsed.path == "/api/scan":
             min_mb = float(qs.get("min_mb", ["25"])[0])
+            force = qs.get("refresh", ["0"])[0] in {"1", "true", "yes"}
             self._send_json({
                 "ok": True,
                 "telemetry": get_disk_telemetry(),
-                "caches": scan_system_caches(),
-                "candidates": scan_offload_candidates(min_size_mb=min_mb),
+                "caches": scan_system_caches(force_refresh=force),
+                "candidates": scan_offload_candidates(min_size_mb=min_mb, force_refresh=force),
                 "ledger": load_ledger()[:50],
             })
             return
 
         if parsed.path == "/api/caches":
-            self._send_json({"ok": True, "caches": scan_system_caches()})
+            force = qs.get("refresh", ["0"])[0] in {"1", "true", "yes"}
+            self._send_json({"ok": True, "caches": scan_system_caches(force_refresh=force)})
+            return
+
+        if parsed.path == "/api/cache-inspect":
+            cache_id = qs.get("id", [""])[0]
+            res = inspect_cache_target(cache_id)
+            self._send_json(res, status=200 if res.get("ok") else 404)
             return
 
         if parsed.path == "/api/candidates":
             min_mb = float(qs.get("min_mb", ["25"])[0])
-            self._send_json({"ok": True, "candidates": scan_offload_candidates(min_size_mb=min_mb)})
+            force = qs.get("refresh", ["0"])[0] in {"1", "true", "yes"}
+            self._send_json({"ok": True, "candidates": scan_offload_candidates(min_size_mb=min_mb, force_refresh=force)})
             return
 
         if parsed.path == "/api/ledger":
             self._send_json({"ok": True, "ledger": load_ledger()})
+            return
+
+        if parsed.path == "/api/jobs":
+            self._send_json({"ok": True, "jobs": get_active_jobs()})
             return
 
                 # Static file fallback
@@ -1087,6 +1308,11 @@ class SpaceGuardRequestHandler(http.server.BaseHTTPRequestHandler):
         if parsed.path == "/api/clean-cache":
             res = clean_safe_cache(data.get("cache_id", ""))
             res["telemetry"] = get_disk_telemetry()
+            self._send_json(res, status=200 if res.get("ok") else 400)
+            return
+
+        if parsed.path == "/api/reveal-path":
+            res = reveal_local_path(data.get("path", ""))
             self._send_json(res, status=200 if res.get("ok") else 400)
             return
 

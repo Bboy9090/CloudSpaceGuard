@@ -269,7 +269,49 @@ class DataSafetyLifecycleTests(unittest.TestCase):
         self.assertEqual(res["freed_bytes"], max(0, expected_size - actual_after))
         self.assertGreater(res["freed_bytes"], 0)
         self.assertNotEqual(res["freed_bytes"], mock_caches[0]["size_bytes"])
+        self.assertEqual(res["deleted_count"], 2)
+        self.assertEqual({item["name"] for item in res["deleted_items"]}, {"pkg1.tgz", "nested"})
+        self.assertIn("telemetry_before", res)
+        self.assertIn("telemetry_after", res)
+        self.assertIn("free_bytes", res["telemetry_after"])
         self.assertEqual(list(cache_dir.iterdir()), [])
+
+    def test_cache_inspect_and_directory_archive_size_accounting(self):
+        cache_dir = self.root / "inspect_cache"
+        cache_dir.mkdir()
+        (cache_dir / "big.bin").write_bytes(b"X" * 32768)
+        sub = cache_dir / "sub"
+        sub.mkdir()
+        (sub / "small.bin").write_bytes(b"Y" * 4096)
+
+        mock_caches = [
+            {
+                "id": "npm_cache",
+                "name": "Mock Cache",
+                "path": str(cache_dir),
+                "category": "Developer Cache",
+                "safe_level": "safe",
+                "clean_cmd": "rm -rf ...",
+                "description": "Test",
+                "size_bytes": 36864,
+            }
+        ]
+        with patch.object(guard, "scan_system_caches", return_value=mock_caches):
+            inspected = guard.inspect_cache_target("npm_cache")
+        self.assertTrue(inspected["ok"])
+        self.assertEqual(inspected["total_items"], 2)
+        self.assertEqual(inspected["items"][0]["name"], "big.bin")
+
+        proj = self.root / "MyProj"
+        proj.mkdir()
+        (proj / "main.py").write_text("print('ok')\n", encoding="utf-8")
+        copy_res = guard.verify_and_offload_file(str(proj), "test", leave_stub=True)
+        self.assertTrue(copy_res["ok"])
+        self.assertIsInstance(copy_res["entry"]["size_bytes"], int)
+        self.assertGreater(copy_res["entry"]["size_bytes"], 0)
+        self.assertIn("telemetry_before", copy_res)
+        self.assertIn("telemetry_after", copy_res)
+        self.assertTrue(any(j["kind"] == "vault_copy" and j["done"] for j in guard.get_active_jobs()))
 
 
 if __name__ == "__main__":
