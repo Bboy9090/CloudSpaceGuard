@@ -1407,7 +1407,100 @@ def get_rclone_status() -> Dict[str, Any]:
     return {"ok": True, "installed": True, "remotes": remotes, "binary": rclone_bin}
 
 
-def run_rclone_verify(source_path_str: str, remote_target: str, dry_run: bool = True) -> Dict[str, Any]:
+def delete_local_path(target_path_str: str, confirm_delete: bool = False) -> Dict[str, Any]:
+    """Explicitly delete a user-confirmed local file or subfolder to reclaim disk space."""
+    if not confirm_delete:
+        return {"ok": False, "error": "Explicit user confirmation (confirm_delete=True) is required."}
+    if not target_path_str:
+        return {"ok": False, "error": "Target path is required."}
+    raw_path = Path(target_path_str).expanduser()
+    if raw_path.is_symlink():
+        return {"ok": False, "error": f"Refused: '{raw_path}' is a symlink."}
+    req_path = raw_path.resolve()
+    if not req_path.exists():
+        return {"ok": False, "error": f"Path not found: {req_path}"}
+
+    home = Path.home().resolve()
+    protected_exact = {
+        home,
+        home / "Desktop",
+        home / "Documents",
+        home / "Downloads",
+        home / "Pictures",
+        home / "Movies",
+        home / "Music",
+        home / "Library",
+        STATE_DIR.resolve(),
+    }
+    if req_path in protected_exact or req_path == Path("/"):
+        return {"ok": False, "error": f"Refused: '{req_path}' is a protected root/user directory."}
+    try:
+        req_path.relative_to(home)
+    except ValueError:
+        return {"ok": False, "error": f"Refused: '{req_path}' is outside user home directory."}
+    try:
+        req_path.relative_to(STATE_DIR.resolve())
+        return {"ok": False, "error": f"Refused: cannot delete CloudSpaceGuard ledger/state files ({req_path})."}
+    except ValueError:
+        pass
+
+    telemetry_before = get_disk_telemetry()
+    is_dir = req_path.is_dir()
+    if is_dir:
+        before_bytes = dir_size_bytes(req_path)
+    else:
+        st = req_path.stat()
+        blocks = getattr(st, "st_blocks", 0)
+        before_bytes = blocks * 512 if blocks > 0 else st.st_size
+
+    job_id = _start_job("local_delete", req_path.name, "Deleting confirmed local target", bytes_total=before_bytes)
+    try:
+        if is_dir:
+            shutil.rmtree(req_path)
+        else:
+            req_path.unlink()
+        global _CACHE_TIMESTAMP, _CACHED_CACHES, _CACHED_CANDIDATES
+        _CACHE_TIMESTAMP = 0.0
+        _CACHED_CACHES = []
+        _CACHED_CANDIDATES = []
+        telemetry_after = get_disk_telemetry()
+        freed_bytes = before_bytes if not req_path.exists() else 0
+        entry = {
+            "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
+            "action": "local_deleted",
+            "file_name": req_path.name,
+            "original_path": str(req_path),
+            "cloud_destination": "Local Disk Delete (Space Reclaimed)",
+            "size_bytes": freed_bytes,
+            "sha256": "LOCAL-DELETE-CONFIRMED",
+            "verified": not req_path.exists(),
+        }
+        append_ledger(entry)
+        _finish_job(job_id, True, "Local target deleted", f"Freed {round(freed_bytes / (1024 ** 2), 1)} MB")
+        return {
+            "ok": True,
+            "path": str(req_path),
+            "name": req_path.name,
+            "is_dir": is_dir,
+            "before_bytes": before_bytes,
+            "freed_bytes": freed_bytes,
+            "freed_mb": round(freed_bytes / (1024 ** 2), 1),
+            "telemetry_before": telemetry_before,
+            "telemetry_after": telemetry_after,
+            "disk_free_delta_bytes": telemetry_after["free_bytes"] - telemetry_before["free_bytes"],
+            "entry": entry,
+        }
+    except Exception as exc:
+        _finish_job(job_id, False, "Delete failed", str(exc))
+        return {"ok": False, "error": str(exc), "telemetry_before": telemetry_before, "telemetry_after": get_disk_telemetry()}
+
+
+def run_rclone_verify(
+    source_path_str: str,
+    remote_target: str,
+    dry_run: bool = True,
+    delete_source_after_remote_verify: bool = False,
+) -> Dict[str, Any]:
     """Rclone-powered remote copy + checksum check. Never deletes the local source."""
     status = get_rclone_status()
     if not status["installed"]:
@@ -1452,13 +1545,27 @@ def run_rclone_verify(source_path_str: str, remote_target: str, dry_run: bool = 
                     "remote_durability_verified": False,
                 }
 
+        source_retained = True
+        freed_bytes = 0
+        telemetry_before = get_disk_telemetry()
+        telemetry_after = telemetry_before
+        if not dry_run and remote_verified and delete_source_after_remote_verify:
+            del_res = delete_local_path(str(src), confirm_delete=True)
+            if del_res.get("ok"):
+                source_retained = False
+                freed_bytes = del_res.get("freed_bytes", 0)
+                telemetry_after = del_res.get("telemetry_after", telemetry_before)
+
         _finish_job(job_id, True, "rclone operation complete", remote_target)
         return {
             "ok": True,
             "dry_run": dry_run,
             "source_path": str(src),
             "remote_target": remote_target,
-            "source_retained": True,
+            "source_retained": source_retained,
+            "freed_bytes": freed_bytes,
+            "telemetry_before": telemetry_before,
+            "telemetry_after": telemetry_after,
             "remote_durability_verified": remote_verified,
             "output": (copy_res.stdout + "\n" + copy_res.stderr + "\n" + check_output).strip()[:1200],
         }
@@ -1715,7 +1822,18 @@ class SpaceGuardRequestHandler(http.server.BaseHTTPRequestHandler):
                 source_path_str=data.get("source_path", ""),
                 remote_target=data.get("remote_target", ""),
                 dry_run=bool(data.get("dry_run", True)),
+                delete_source_after_remote_verify=bool(data.get("delete_source_after_remote_verify", False)),
             )
+            res["telemetry"] = get_disk_telemetry()
+            self._send_json(res, status=200 if res.get("ok") else 400)
+            return
+
+        if parsed.path == "/api/delete-local-path":
+            res = delete_local_path(
+                target_path_str=data.get("path", ""),
+                confirm_delete=bool(data.get("confirm_delete", False)),
+            )
+            res["telemetry"] = get_disk_telemetry()
             self._send_json(res, status=200 if res.get("ok") else 400)
             return
 

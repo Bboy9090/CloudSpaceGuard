@@ -392,6 +392,31 @@ class DataSafetyLifecycleTests(unittest.TestCase):
             self.assertFalse(res["remote_durability_verified"])
             self.assertTrue(src.exists())
 
+    def test_delete_local_path_requires_confirm_and_protects_roots(self):
+        with patch.object(Path, "home", return_value=self.root):
+            protected = self.root / "Downloads"
+            protected.mkdir(exist_ok=True)
+            victim = protected / "old_firmware.ipsw"
+            victim.write_bytes(b"F" * 16384)
+
+            no_confirm = guard.delete_local_path(str(victim), confirm_delete=False)
+            self.assertFalse(no_confirm["ok"])
+            self.assertTrue(victim.exists())
+
+            root_reject = guard.delete_local_path(str(protected), confirm_delete=True)
+            self.assertFalse(root_reject["ok"])
+            self.assertTrue(protected.exists())
+
+            outside_reject = guard.delete_local_path("/tmp", confirm_delete=True)
+            self.assertFalse(outside_reject["ok"])
+
+            ok_del = guard.delete_local_path(str(victim), confirm_delete=True)
+            self.assertTrue(ok_del["ok"])
+            self.assertGreaterEqual(ok_del["freed_bytes"], 16384)
+            self.assertFalse(victim.exists())
+            self.assertIn("telemetry_before", ok_del)
+            self.assertIn("telemetry_after", ok_del)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -680,6 +680,10 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
               </button>
             </div>
           </div>
+          <label class="flex items-center gap-2 text-xs text-amber-200 cursor-pointer">
+            <input id="rclone-delete-after-verify" type="checkbox" class="accent-rose-400" />
+            <span>Delete local original ONLY after <code>rclone check</code> confirms remote checksum match (ignored during Dry-Run)</span>
+          </label>
           <pre id="rclone-output-box" class="hidden text-[11px] font-mono text-slate-300 bg-slate-900 p-3 rounded-lg border border-slate-800 overflow-x-auto"></pre>
         </div>
       </div>
@@ -765,6 +769,29 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
             🧹 Delete Selected Cache Contents Now
           </button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Confirm Permanent Local Delete -->
+  <div id="confirm-delete-modal" class="hidden fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+    <div class="glass rounded-2xl max-w-xl w-full p-6 space-y-4 border border-rose-500/40">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-rose-200">Confirm Permanent Delete &amp; Reclaim Space</h3>
+        <button onclick="closeConfirmDeleteModal()" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+      <p class="text-xs text-slate-300" id="delete-modal-note">
+        This permanently deletes the selected local file or folder from your disk to reclaim space.
+      </p>
+      <div class="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-1 text-xs">
+        <div class="font-mono text-white break-all" id="delete-modal-path"></div>
+        <div class="text-cyan-300 font-semibold" id="delete-modal-size"></div>
+      </div>
+      <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
+        <button onclick="closeConfirmDeleteModal()" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold">Cancel</button>
+        <button onclick="executeConfirmedLocalDelete()" id="btn-confirm-delete-go" class="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold">
+          🗑️ Delete Permanently &amp; Reclaim Space
+        </button>
       </div>
     </div>
   </div>
@@ -1280,6 +1307,9 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
               </button>
               <button onclick="offloadCandidate(${idx}, false)" class="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white">
                 Copy to Vault
+              </button>
+              <button onclick="confirmDeleteCandidate(${idx})" class="px-2.5 py-1 rounded-lg bg-rose-600/80 hover:bg-rose-500 text-xs font-semibold text-white" title="Delete from local disk to reclaim space">
+                Delete
               </button>
             </td>
           </tr>
@@ -1982,6 +2012,7 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
               <div class="flex items-center gap-2 shrink-0">
                 <span class="font-mono text-cyan-300 font-semibold">${fmtBytes(item.size_bytes)} (${item.percent}%)</span>
                 <button onclick="addToCollector(${safePath})" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300">+ Stage</button>
+                <button onclick="confirmDeletePath(${safePath}, ${Number(item.size_bytes || 0)}, 'Deleting from Storage Explorer permanently removes this local item.')" class="px-2 py-0.5 rounded bg-rose-600/80 hover:bg-rose-500 text-white font-semibold">Delete</button>
               </div>
             </div>
             <div class="w-full h-1.5 rounded-full bg-slate-950 overflow-hidden">
@@ -2025,7 +2056,13 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
                   <span class="text-amber-300 font-bold">Wasted: ${fmtBytes(g.wasted_bytes)}</span>
                 </div>
                 <div class="space-y-1 font-mono text-[11px] text-slate-300">
-                  ${g.files.map(f => `<div class="truncate">• ${escHtml(f.path)}</div>`).join('')}
+                  ${g.files.map(f => {
+                    const safeDupPath = JSON.stringify(f.path).replace(/"/g, '&quot;');
+                    return `<div class="flex items-center justify-between gap-2">
+                      <span class="truncate">• ${escHtml(f.path)}</span>
+                      <button onclick="confirmDeletePath(${safeDupPath}, ${Number(g.file_size_bytes || 0)}, 'Duplicate copy (${g.count} identical SHA-256 copies found). Keep at least one copy if you still need this file.')" class="px-2 py-0.5 rounded bg-rose-600/80 hover:bg-rose-500 text-white font-sans font-semibold shrink-0">Delete Copy</button>
+                    </div>`;
+                  }).join('')}
                 </div>
               </div>
             `).join('')}
@@ -2100,6 +2137,7 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
     async function executeRcloneVerify(dryRun) {
       const sourcePath = (document.getElementById('rclone-source-input')?.value || '').trim();
       const remoteTarget = (document.getElementById('rclone-remote-input')?.value || '').trim();
+      const deleteAfterVerify = Boolean(document.getElementById('rclone-delete-after-verify')?.checked);
       const outBox = document.getElementById('rclone-output-box');
       if (!sourcePath || !remoteTarget) {
         showToast('Enter both a local source path and an rclone remote target (e.g. remote:bucket/path).', true);
@@ -2110,7 +2148,12 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
         const res = await fetch(`${API_BASE}/api/rclone-verify`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ source_path: sourcePath, remote_target: remoteTarget, dry_run: dryRun })
+          body: JSON.stringify({
+            source_path: sourcePath,
+            remote_target: remoteTarget,
+            dry_run: dryRun,
+            delete_source_after_remote_verify: !dryRun && deleteAfterVerify
+          })
         });
         const data = await res.json();
         if (outBox) {
@@ -2122,20 +2165,93 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
           recordActivity('rclone Verify', false, data.error || 'Failed');
           return;
         }
+        if (!data.source_retained) {
+          state.sessionReclaimedBytes += (data.freed_bytes || 0);
+        }
         const msg = dryRun
           ? `rclone dry-run OK (${sourcePath} -> ${remoteTarget}); source retained`
-          : `rclone copy + checksum verified (${sourcePath} -> ${remoteTarget}); source retained`;
+          : data.source_retained
+            ? `rclone copy + checksum verified (${sourcePath} -> ${remoteTarget}); source retained`
+            : `rclone verified remote durability & deleted local original (${fmtBytes(data.freed_bytes)} reclaimed)`;
         showToast(`✓ ${msg}`);
         recordActivity('rclone Verify', true, msg, {
+          telemetryBefore: data.telemetry_before,
+          telemetryAfter: data.telemetry_after,
+          freedBytes: data.freed_bytes || 0,
           savedInfo: {
             source: sourcePath,
-            sourceStatus: 'Retained on disk',
+            sourceStatus: data.source_retained ? 'Retained on disk' : 'Deleted after remote rclone check',
             dest: remoteTarget,
             note: data.remote_durability_verified ? 'Remote durability verified by `rclone check`.' : 'Dry-run only.'
           }
         });
+        if (!data.source_retained) await refreshLiveScan(false);
       } catch (e) {
         showToast(`rclone error: ${e.message}`, true);
+      } finally {
+        endWork();
+      }
+    }
+
+    // ── Explicit User-Confirmed Local Delete ──
+    let _pendingDeleteTarget = null;
+    function confirmDeleteCandidate(idx) {
+      const list = getFilteredCandidates();
+      const c = list[idx];
+      if (!c) return;
+      confirmDeletePath(c.path, c.size_bytes, 'Permanently delete this local file/folder to reclaim space. If you need a backup, verify it is uploaded first.');
+    }
+
+    function confirmDeletePath(targetPath, sizeBytes, note) {
+      _pendingDeleteTarget = { path: targetPath, sizeBytes };
+      document.getElementById('delete-modal-path').textContent = targetPath;
+      document.getElementById('delete-modal-size').textContent = `Size on disk: ${fmtBytes(sizeBytes)}`;
+      document.getElementById('delete-modal-note').textContent = note || 'This permanently deletes the selected local file or folder from your disk to reclaim space.';
+      document.getElementById('confirm-delete-modal').classList.remove('hidden');
+    }
+
+    function closeConfirmDeleteModal() {
+      _pendingDeleteTarget = null;
+      document.getElementById('confirm-delete-modal').classList.add('hidden');
+    }
+
+    async function executeConfirmedLocalDelete() {
+      if (!_pendingDeleteTarget) return;
+      const target = _pendingDeleteTarget;
+      closeConfirmDeleteModal();
+      beginWork('Deleting Confirmed Local Item', target.path);
+      try {
+        const res = await fetch(`${API_BASE}/api/delete-local-path`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: target.path, confirm_delete: true })
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          showToast(data.error || 'Delete refused', true);
+          recordActivity('Local Delete', false, `${target.path}: ${data.error}`);
+          return;
+        }
+        state.sessionReclaimedBytes += (data.freed_bytes || 0);
+        state.selectedFiles.delete(target.path);
+        state.collectorTray.delete(target.path);
+        const msg = `Deleted ${data.name} — freed ${fmtBytes(data.freed_bytes)}`;
+        showToast(`✓ ${msg}`);
+        recordActivity('Local Delete', true, msg, {
+          telemetryBefore: data.telemetry_before,
+          telemetryAfter: data.telemetry_after,
+          deletedCount: 1,
+          deletedItems: [{ name: data.name, path: data.path, is_dir: data.is_dir, size_bytes: data.freed_bytes }],
+          freedBytes: data.freed_bytes
+        });
+        if (!document.getElementById('tab-panel-explorer')?.classList.contains('hidden')) {
+          if (state.explorer && state.explorer.path) await loadExplorer(state.explorer.path);
+          if (state.duplicates) await scanDuplicates();
+        }
+        await refreshLiveScan(false);
+      } catch (e) {
+        showToast(`Delete error: ${e.message}`, true);
+        recordActivity('Local Delete', false, e.message);
       } finally {
         endWork();
       }
