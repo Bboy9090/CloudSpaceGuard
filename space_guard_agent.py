@@ -1100,6 +1100,373 @@ def clean_safe_cache(cache_id: str) -> Dict[str, Any]:
         return {"ok": False, "error": str(exc)}
 
 
+def _classify_extension(name: str, is_dir: bool) -> str:
+    if is_dir:
+        return "Folders"
+    ext = Path(name).suffix.lower()
+    if ext in {".zip", ".tar", ".gz", ".tgz", ".bz2", ".xz", ".7z", ".rar", ".zst"}:
+        return "Archives"
+    if ext in {".dmg", ".iso", ".img", ".pkg", ".msi", ".exe", ".appimage", ".deb", ".rpm"}:
+        return "Disk Images & Installers"
+    if ext in {".mp4", ".mov", ".mkv", ".avi", ".webm", ".mp3", ".wav", ".flac", ".png", ".jpg", ".jpeg", ".heic", ".raw"}:
+        return "Media"
+    if ext in {".pdf", ".docx", ".xlsx", ".pptx", ".csv", ".txt", ".md", ".json"}:
+        return "Documents & Data"
+    return "Other Files"
+
+
+def explore_directory(path_str: Optional[str] = None, limit: int = 40) -> Dict[str, Any]:
+    """DaisyDisk / WinDirStat-style directory drill-down with proportional sizes and type breakdown."""
+    home = Path.home().resolve()
+    target = Path(path_str).expanduser().resolve() if path_str else home
+    if not target.exists() or not target.is_dir():
+        return {"ok": False, "error": f"Directory not found: {target}"}
+    job_id = _start_job("explore", str(target), "Scanning directory sizes")
+    entries: List[Dict[str, Any]] = []
+    type_totals: Dict[str, int] = {}
+    total_bytes = 0
+    try:
+        children = list(target.iterdir())
+        _update_job(job_id, items_total=len(children), phase="Measuring subdirectories & files")
+        for idx, child in enumerate(children, 1):
+            if idx % 10 == 0 or idx == len(children):
+                _update_job(job_id, items_done=idx, detail=child.name)
+            if child.is_symlink():
+                continue
+            is_dir = child.is_dir()
+            if is_dir:
+                sz = dir_size_bytes(child, max_entries=10000)
+            else:
+                try:
+                    sz = child.stat().st_size
+                except OSError:
+                    sz = 0
+            total_bytes += sz
+            cat = _classify_extension(child.name, is_dir)
+            type_totals[cat] = type_totals.get(cat, 0) + sz
+            try:
+                mtime = datetime.datetime.fromtimestamp(child.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+            except OSError:
+                mtime = ""
+            entries.append({
+                "name": child.name,
+                "path": str(child),
+                "is_dir": is_dir,
+                "category": cat,
+                "size_bytes": sz,
+                "modified": mtime,
+            })
+        entries.sort(key=lambda x: x["size_bytes"], reverse=True)
+        for item in entries:
+            item["percent"] = round((item["size_bytes"] / total_bytes) * 100, 1) if total_bytes > 0 else 0.0
+        breakdown = [
+            {
+                "category": k,
+                "size_bytes": v,
+                "percent": round((v / total_bytes) * 100, 1) if total_bytes > 0 else 0.0,
+            }
+            for k, v in sorted(type_totals.items(), key=lambda kv: kv[1], reverse=True)
+            if v > 0
+        ]
+        _finish_job(job_id, True, "Directory scan complete", f"{len(entries)} entries")
+        return {
+            "ok": True,
+            "path": str(target),
+            "parent_path": str(target.parent) if target != target.parent else None,
+            "total_bytes": total_bytes,
+            "total_entries": len(entries),
+            "items": entries[:limit],
+            "breakdown": breakdown,
+        }
+    except PermissionError as exc:
+        _finish_job(job_id, False, "Permission denied", str(exc))
+        return {"ok": False, "error": f"Permission denied: {target}"}
+    except Exception as exc:
+        _finish_job(job_id, False, "Explore failed", str(exc))
+        return {"ok": False, "error": str(exc)}
+
+
+def list_granular_clean_targets() -> List[Dict[str, Any]]:
+    """DevCleaner-style granular build & Xcode sub-targets (each selectable individually)."""
+    home = Path.home()
+    targets: List[Dict[str, Any]] = []
+    for sub in discover_project_build_caches():
+        if sub.is_symlink() or not sub.is_dir():
+            continue
+        sz = dir_size_bytes(sub, max_entries=15000)
+        if sz <= 0:
+            continue
+        try:
+            rel = sub.relative_to(home / "Projects")
+            proj_name = rel.parts[0] if rel.parts else sub.parent.name
+        except ValueError:
+            proj_name = sub.parent.name
+        try:
+            mtime = datetime.datetime.fromtimestamp(sub.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+        except OSError:
+            mtime = ""
+        targets.append({
+            "path": str(sub.resolve()),
+            "project": proj_name,
+            "kind": "Rust target" if sub.name == "target" else "Node node_modules",
+            "name": f"{proj_name} / {sub.name}",
+            "size_bytes": sz,
+            "modified": mtime,
+        })
+
+    xcode_roots = [
+        ("Xcode DerivedData", home / "Library" / "Developer" / "Xcode" / "DerivedData"),
+        ("Xcode iOS DeviceSupport", home / "Library" / "Developer" / "Xcode" / "iOS DeviceSupport"),
+    ]
+    for kind, root in xcode_roots:
+        if root.exists() and root.is_dir() and not root.is_symlink():
+            try:
+                for child in root.iterdir():
+                    if child.is_dir() and not child.is_symlink():
+                        sz = dir_size_bytes(child, max_entries=10000)
+                        if sz > 1024 * 1024:
+                            try:
+                                mtime = datetime.datetime.fromtimestamp(child.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+                            except OSError:
+                                mtime = ""
+                            targets.append({
+                                "path": str(child.resolve()),
+                                "project": child.name,
+                                "kind": kind,
+                                "name": f"{kind}: {child.name}",
+                                "size_bytes": sz,
+                                "modified": mtime,
+                            })
+            except OSError:
+                pass
+    targets.sort(key=lambda x: x["size_bytes"], reverse=True)
+    return targets
+
+
+def clean_granular_target(target_path_str: str) -> Dict[str, Any]:
+    """Delete one explicitly confirmed project build or Xcode sub-target (allowlisted only)."""
+    if not target_path_str:
+        return {"ok": False, "error": "Target path is required."}
+    req_path = Path(target_path_str).expanduser().resolve()
+    allowed = {str(Path(t["path"]).expanduser().resolve()): t for t in list_granular_clean_targets()}
+    meta = allowed.get(str(req_path))
+    if not meta:
+        return {"ok": False, "error": f"Refused: '{req_path}' is not an allowlisted build/Xcode sub-target."}
+
+    telemetry_before = get_disk_telemetry()
+    before_bytes = dir_size_bytes(req_path) if req_path.exists() else 0
+    job_id = _start_job("clean_project_target", meta["name"], "Deleting build sub-target", bytes_total=before_bytes)
+    errors: List[str] = []
+    try:
+        def _on_rm_error(func: Any, failed_path: str, exc_info: Any) -> None:
+            errors.append(f"{failed_path}: {exc_info[1]}")
+
+        shutil.rmtree(req_path, onerror=_on_rm_error)
+        after_bytes = dir_size_bytes(req_path) if req_path.exists() else 0
+        freed_bytes = max(0, before_bytes - after_bytes)
+        global _CACHE_TIMESTAMP, _CACHED_CACHES, _CACHED_CANDIDATES
+        _CACHE_TIMESTAMP = 0.0
+        _CACHED_CACHES = []
+        _CACHED_CANDIDATES = []
+        telemetry_after = get_disk_telemetry()
+        if errors and freed_bytes == 0 and req_path.exists():
+            _finish_job(job_id, False, "Clean failed", errors[0])
+            return {
+                "ok": False,
+                "error": f"Failed to remove {meta['name']}: {errors[0]}",
+                "errors": errors,
+                "telemetry_before": telemetry_before,
+                "telemetry_after": telemetry_after,
+            }
+        entry = {
+            "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
+            "action": "project_target_cleaned",
+            "file_name": meta["name"],
+            "original_path": str(req_path),
+            "cloud_destination": f"Granular {meta['kind']} Purge",
+            "size_bytes": freed_bytes,
+            "sha256": "BUILD-SUBTARGET-PURGE",
+            "verified": len(errors) == 0,
+        }
+        append_ledger(entry)
+        _finish_job(job_id, True, "Build sub-target removed", f"Freed {round(freed_bytes / (1024 ** 2), 1)} MB")
+        return {
+            "ok": True,
+            "cache_name": meta["name"],
+            "cache_path": str(req_path),
+            "before_bytes": before_bytes,
+            "after_bytes": after_bytes,
+            "freed_bytes": freed_bytes,
+            "freed_mb": round(freed_bytes / (1024 ** 2), 1),
+            "deleted_count": 1 if not req_path.exists() else 0,
+            "deleted_items": [{"name": meta["name"], "path": str(req_path), "is_dir": True, "size_bytes": freed_bytes}],
+            "partial_errors": errors,
+            "telemetry_before": telemetry_before,
+            "telemetry_after": telemetry_after,
+            "disk_free_delta_bytes": telemetry_after["free_bytes"] - telemetry_before["free_bytes"],
+            "entry": entry,
+        }
+    except Exception as exc:
+        _finish_job(job_id, False, "Clean failed", str(exc))
+        return {"ok": False, "error": str(exc)}
+
+
+def find_duplicate_files(root_str: Optional[str] = None, min_mb: float = 1.0, max_files: int = 8000) -> Dict[str, Any]:
+    """WizTree-style 2-phase exact duplicate finder (size grouping followed by SHA-256 verification)."""
+    root = Path(root_str).expanduser().resolve() if root_str else (Path.home() / "Downloads").resolve()
+    if not root.exists() or not root.is_dir():
+        return {"ok": False, "error": f"Scan folder not found: {root}"}
+    min_bytes = max(1024, int(min_mb * 1024 * 1024))
+    job_id = _start_job("duplicates", str(root), "Indexing files by size")
+    by_size: Dict[int, List[Path]] = {}
+    scanned = 0
+    try:
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [
+                d for d in dirnames
+                if not d.startswith(".") and d not in {"node_modules", "target", ".git", "CloudSpaceGuard_Vault"}
+            ]
+            for fname in filenames:
+                if fname.endswith(".cloudstub") or fname.startswith("."):
+                    continue
+                fp = Path(dirpath) / fname
+                if fp.is_symlink():
+                    continue
+                scanned += 1
+                if scanned > max_files:
+                    break
+                try:
+                    st = fp.stat()
+                except OSError:
+                    continue
+                if st.st_size >= min_bytes:
+                    by_size.setdefault(st.st_size, []).append(fp)
+            if scanned > max_files:
+                break
+
+        size_candidates = {sz: paths for sz, paths in by_size.items() if len(paths) > 1}
+        total_to_hash = sum(len(v) for v in size_candidates.values())
+        _update_job(job_id, phase="Computing SHA-256 for size matches", items_total=total_to_hash, items_done=0)
+
+        groups: List[Dict[str, Any]] = []
+        hashed = 0
+        for sz, paths in size_candidates.items():
+            by_hash: Dict[str, List[Path]] = {}
+            for p in paths:
+                hashed += 1
+                _update_job(job_id, items_done=hashed, detail=p.name)
+                try:
+                    digest = compute_sha256(p)
+                    by_hash.setdefault(digest, []).append(p)
+                except OSError:
+                    continue
+            for digest, dup_paths in by_hash.items():
+                if len(dup_paths) > 1:
+                    dup_paths.sort(key=lambda p: p.stat().st_mtime)
+                    wasted = sz * (len(dup_paths) - 1)
+                    groups.append({
+                        "sha256": digest,
+                        "file_size_bytes": sz,
+                        "count": len(dup_paths),
+                        "wasted_bytes": wasted,
+                        "files": [
+                            {
+                                "name": p.name,
+                                "path": str(p),
+                                "modified": datetime.datetime.fromtimestamp(p.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
+                            }
+                            for p in dup_paths
+                        ],
+                    })
+        groups.sort(key=lambda g: g["wasted_bytes"], reverse=True)
+        total_wasted = sum(g["wasted_bytes"] for g in groups)
+        _finish_job(job_id, True, "Duplicate scan complete", f"{len(groups)} duplicate group(s)")
+        return {
+            "ok": True,
+            "root": str(root),
+            "scanned_files": scanned,
+            "duplicate_groups": groups[:50],
+            "total_wasted_bytes": total_wasted,
+        }
+    except Exception as exc:
+        _finish_job(job_id, False, "Duplicate scan failed", str(exc))
+        return {"ok": False, "error": str(exc)}
+
+
+def get_rclone_status() -> Dict[str, Any]:
+    rclone_bin = shutil.which("rclone")
+    if not rclone_bin:
+        return {"ok": True, "installed": False, "remotes": [], "binary": None}
+    remotes: List[str] = []
+    try:
+        res = subprocess.run([rclone_bin, "listremotes"], capture_output=True, text=True, timeout=3)
+        if res.returncode == 0 and res.stdout:
+            remotes = [line.strip() for line in res.stdout.splitlines() if line.strip()]
+    except Exception:
+        pass
+    return {"ok": True, "installed": True, "remotes": remotes, "binary": rclone_bin}
+
+
+def run_rclone_verify(source_path_str: str, remote_target: str, dry_run: bool = True) -> Dict[str, Any]:
+    """Rclone-powered remote copy + checksum check. Never deletes the local source."""
+    status = get_rclone_status()
+    if not status["installed"]:
+        return {"ok": False, "error": "rclone is not installed on this system. Install rclone and configure a remote first.", "source_retained": True, "remote_durability_verified": False}
+    if not status["remotes"]:
+        return {"ok": False, "error": "No rclone remotes configured. Run 'rclone config' in terminal first.", "source_retained": True, "remote_durability_verified": False}
+    if not source_path_str or not remote_target:
+        return {"ok": False, "error": "Source path and rclone remote target (e.g. myremote:vault/) are required.", "source_retained": True, "remote_durability_verified": False}
+    src = Path(source_path_str).expanduser().resolve()
+    if not src.exists():
+        return {"ok": False, "error": f"Source not found: {src}", "source_retained": True, "remote_durability_verified": False}
+    remote_prefix = remote_target.split(":", 1)[0] + ":"
+    if remote_prefix not in status["remotes"]:
+        return {"ok": False, "error": f"Unknown rclone remote '{remote_prefix}'. Configured: {', '.join(status['remotes'])}", "source_retained": True, "remote_durability_verified": False}
+
+    rclone_bin = status["binary"]
+    job_id = _start_job("rclone_verify", str(src), "Running rclone remote checksum copy" if not dry_run else "Running rclone dry-run")
+    try:
+        copy_cmd = [rclone_bin, "copy", "--checksum", str(src), remote_target]
+        if dry_run:
+            copy_cmd.append("--dry-run")
+        copy_res = subprocess.run(copy_cmd, capture_output=True, text=True, timeout=120)
+        if copy_res.returncode != 0:
+            _finish_job(job_id, False, "rclone copy failed", copy_res.stderr.strip()[:200])
+            return {"ok": False, "error": copy_res.stderr.strip() or "rclone copy failed", "source_retained": True}
+
+        remote_verified = False
+        check_output = ""
+        if not dry_run:
+            _update_job(job_id, phase="Verifying remote checksums via rclone check", detail=remote_target)
+            check_target = f"{remote_target.rstrip('/')}/{src.name}" if src.is_file() else remote_target
+            check_cmd = [rclone_bin, "check", str(src), check_target]
+            check_res = subprocess.run(check_cmd, capture_output=True, text=True, timeout=120)
+            remote_verified = check_res.returncode == 0
+            check_output = (check_res.stdout + "\n" + check_res.stderr).strip()
+            if not remote_verified:
+                _finish_job(job_id, False, "rclone check reported mismatch", check_output[:200])
+                return {
+                    "ok": False,
+                    "error": f"Remote checksum check failed: {check_output or 'mismatch'}",
+                    "source_retained": True,
+                    "remote_durability_verified": False,
+                }
+
+        _finish_job(job_id, True, "rclone operation complete", remote_target)
+        return {
+            "ok": True,
+            "dry_run": dry_run,
+            "source_path": str(src),
+            "remote_target": remote_target,
+            "source_retained": True,
+            "remote_durability_verified": remote_verified,
+            "output": (copy_res.stdout + "\n" + copy_res.stderr + "\n" + check_output).strip()[:1200],
+        }
+    except Exception as exc:
+        _finish_job(job_id, False, "rclone error", str(exc))
+        return {"ok": False, "error": str(exc), "source_retained": True}
+
+
 class SpaceGuardRequestHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: Any) -> None:
         pass
@@ -1214,6 +1581,27 @@ class SpaceGuardRequestHandler(http.server.BaseHTTPRequestHandler):
             self._send_json({"ok": True, "jobs": get_active_jobs()})
             return
 
+        if parsed.path == "/api/explore":
+            req_path = qs.get("path", [None])[0]
+            res = explore_directory(req_path)
+            self._send_json(res, status=200 if res.get("ok") else 400)
+            return
+
+        if parsed.path == "/api/project-targets":
+            self._send_json({"ok": True, "targets": list_granular_clean_targets()})
+            return
+
+        if parsed.path == "/api/duplicates":
+            root_path = qs.get("root", [None])[0]
+            min_mb = float(qs.get("min_mb", ["1"])[0])
+            res = find_duplicate_files(root_path, min_mb=min_mb)
+            self._send_json(res, status=200 if res.get("ok") else 400)
+            return
+
+        if parsed.path == "/api/rclone-status":
+            self._send_json(get_rclone_status())
+            return
+
                 # Static file fallback
         web_dir = Path(__file__).resolve().parent / "web"
         rel = parsed.path.lstrip("/") or "index.html"
@@ -1313,6 +1701,21 @@ class SpaceGuardRequestHandler(http.server.BaseHTTPRequestHandler):
 
         if parsed.path == "/api/reveal-path":
             res = reveal_local_path(data.get("path", ""))
+            self._send_json(res, status=200 if res.get("ok") else 400)
+            return
+
+        if parsed.path == "/api/clean-project-target":
+            res = clean_granular_target(data.get("path", ""))
+            res["telemetry"] = get_disk_telemetry()
+            self._send_json(res, status=200 if res.get("ok") else 400)
+            return
+
+        if parsed.path == "/api/rclone-verify":
+            res = run_rclone_verify(
+                source_path_str=data.get("source_path", ""),
+                remote_target=data.get("remote_target", ""),
+                dry_run=bool(data.get("dry_run", True)),
+            )
             self._send_json(res, status=200 if res.get("ok") else 400)
             return
 

@@ -313,6 +313,85 @@ class DataSafetyLifecycleTests(unittest.TestCase):
         self.assertIn("telemetry_after", copy_res)
         self.assertTrue(any(j["kind"] == "vault_copy" and j["done"] for j in guard.get_active_jobs()))
 
+    def test_explore_directory_returns_real_sizes_and_breakdown(self):
+        exp_dir = self.root / "explore_root"
+        exp_dir.mkdir()
+        (exp_dir / "movie.mp4").write_bytes(b"M" * 16384)
+        sub = exp_dir / "docs"
+        sub.mkdir()
+        (sub / "notes.pdf").write_bytes(b"D" * 1024)
+
+        res = guard.explore_directory(str(exp_dir))
+        self.assertTrue(res["ok"])
+        self.assertGreaterEqual(res["total_bytes"], 5120)
+        self.assertEqual(res["total_entries"], 2)
+        self.assertEqual(res["items"][0]["name"], "movie.mp4")
+        self.assertEqual(res["items"][0]["category"], "Media")
+        self.assertGreater(len(res["breakdown"]), 0)
+
+        missing = guard.explore_directory(str(self.root / "does_not_exist"))
+        self.assertFalse(missing["ok"])
+
+    def test_granular_project_target_clean_and_allowlist_rejection(self):
+        proj = self.root / "rust_app"
+        target_dir = proj / "target"
+        target_dir.mkdir(parents=True)
+        (target_dir / "debug_bin").write_bytes(b"R" * 8192)
+        src_dir = proj / "src"
+        src_dir.mkdir()
+        (src_dir / "main.rs").write_text("fn main() {}\n", encoding="utf-8")
+
+        mock_targets = [
+            {
+                "path": str(target_dir),
+                "project": "rust_app",
+                "kind": "Rust target/",
+                "name": "target",
+                "size_bytes": 8192,
+                "modified": 0,
+            }
+        ]
+        with patch.object(guard, "list_granular_clean_targets", return_value=mock_targets):
+            res = guard.clean_granular_target(str(target_dir))
+            self.assertTrue(res["ok"])
+            self.assertEqual(res["freed_bytes"], 8192)
+            self.assertFalse(target_dir.exists())
+            self.assertTrue((src_dir / "main.rs").exists())
+
+            rejected = guard.clean_granular_target(str(src_dir))
+            self.assertFalse(rejected["ok"])
+            self.assertTrue((src_dir / "main.rs").exists())
+
+    def test_find_duplicate_files_exact_sha256_and_read_only(self):
+        dup_root = self.root / "dups"
+        dup_root.mkdir()
+        payload = b"DUPLICATE_PAYLOAD_" * 100
+        f1 = dup_root / "copy1.bin"
+        f2 = dup_root / "copy2.bin"
+        f_unique = dup_root / "unique_same_len.bin"
+        f1.write_bytes(payload)
+        f2.write_bytes(payload)
+        f_unique.write_bytes(b"DIFFERENT_PAYLOAD_" * 100)
+
+        res = guard.find_duplicate_files(str(dup_root), min_mb=0.001)
+        self.assertTrue(res["ok"])
+        self.assertEqual(len(res["duplicate_groups"]), 1)
+        grp = res["duplicate_groups"][0]
+        self.assertEqual(grp["count"], 2)
+        self.assertEqual(grp["wasted_bytes"], len(payload))
+        self.assertTrue(f1.exists() and f2.exists() and f_unique.exists())
+
+    def test_rclone_verify_fails_closed_when_missing(self):
+        src = self.root / "sample.bin"
+        src.write_bytes(b"1234")
+        with patch("shutil.which", return_value=None):
+            st = guard.get_rclone_status()
+            self.assertFalse(st["installed"])
+            res = guard.run_rclone_verify(str(src), "myremote:bucket/sample.bin", dry_run=True)
+            self.assertFalse(res["ok"])
+            self.assertFalse(res["remote_durability_verified"])
+            self.assertTrue(src.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
