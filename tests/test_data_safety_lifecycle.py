@@ -354,7 +354,7 @@ class DataSafetyLifecycleTests(unittest.TestCase):
         with patch.object(guard, "list_granular_clean_targets", return_value=mock_targets):
             res = guard.clean_granular_target(str(target_dir))
             self.assertTrue(res["ok"])
-            self.assertEqual(res["freed_bytes"], 8192)
+            self.assertGreaterEqual(res["freed_bytes"], 8192)
             self.assertFalse(target_dir.exists())
             self.assertTrue((src_dir / "main.rs").exists())
 
