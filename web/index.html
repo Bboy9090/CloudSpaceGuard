@@ -439,6 +439,8 @@
             <button onclick="clearCollectorTray()" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300">Clear Tray</button>
             <button onclick="runCollectorBatch(true)" class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-cyan-300 border border-slate-700">🔍 Hash Check Tray</button>
             <button onclick="runCollectorBatch(false)" class="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white">🛡️ Copy Tray to Vault</button>
+            <button onclick="openBatchRcloneModal('tray')" class="px-3 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-xs font-bold text-white">☁️ rclone Offload Tray</button>
+            <button onclick="openBatchDeleteModal('tray')" class="px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-xs font-bold text-white">🗑️ Delete Tray</button>
           </div>
         </div>
         <div id="collector-tray-items" class="flex flex-wrap gap-2 text-[11px]"></div>
@@ -461,11 +463,23 @@
             <option value="size_asc">Smallest First</option>
             <option value="name_asc">Name (A–Z)</option>
           </select>
+          <button onclick="toggleSelectAllFiles(true)" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold border border-slate-700">
+            Select All
+          </button>
+          <button onclick="toggleSelectAllFiles(false)" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700">
+            Clear
+          </button>
           <button onclick="runBatchOffload(true)" id="btn-batch-dryrun" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700">
             🔍 Dry-Run Verify Selected
           </button>
           <button onclick="runBatchOffload(false)" id="btn-batch-copy" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/20">
             🛡️ Copy Selected to Local Vault
+          </button>
+          <button onclick="openBatchRcloneModal('candidates')" id="btn-batch-rclone" class="px-3.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold">
+            ☁️ Store Selected in Remote (rclone)
+          </button>
+          <button onclick="openBatchDeleteModal('candidates')" id="btn-batch-delete" class="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold">
+            🗑️ Delete Selected
           </button>
         </div>
       </div>
@@ -504,6 +518,12 @@
             <option value="safe">Safe to Clean Only</option>
             <option value="review">Manual Review Only</option>
           </select>
+          <button onclick="selectAllSafeCaches(true)" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold border border-slate-700">
+            Select All Safe
+          </button>
+          <button onclick="selectAllSafeCaches(false)" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700">
+            Clear
+          </button>
           <button onclick="openSafeCleanModal(false)" id="btn-clean-selected-caches" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/20">
             🧹 Preview &amp; Clean Selected (<span id="selected-cache-count">0</span>)
           </button>
@@ -523,6 +543,9 @@
             </p>
           </div>
           <div class="flex items-center gap-2">
+            <button onclick="selectAllSubTargets(true)" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-cyan-300 border border-slate-700">
+              Select All
+            </button>
             <button onclick="loadProjectTargets()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-cyan-300 border border-slate-700">
               ↻ Scan Sub-Targets
             </button>
@@ -792,6 +815,58 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
         <button onclick="executeConfirmedLocalDelete()" id="btn-confirm-delete-go" class="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold">
           🗑️ Delete Permanently &amp; Reclaim Space
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Batch Delete Selected Items -->
+  <div id="confirm-batch-delete-modal" class="hidden fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+    <div class="glass rounded-2xl max-w-2xl w-full p-6 space-y-4 border border-rose-500/40">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-rose-200">Confirm Batch Permanent Delete</h3>
+        <button onclick="closeBatchDeleteModal()" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+      <p class="text-xs text-slate-300" id="batch-delete-note">
+        Review every local file or folder below. Confirmed items will be permanently deleted from disk to reclaim space.
+      </p>
+      <div id="batch-delete-list" class="max-h-64 overflow-y-auto space-y-1.5 text-xs"></div>
+      <div class="flex justify-between items-center pt-2 border-t border-slate-800">
+        <div class="text-xs text-slate-300">
+          Selected items: <strong class="text-cyan-300" id="batch-delete-summary">0</strong>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="closeBatchDeleteModal()" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold">Cancel</button>
+          <button onclick="executeConfirmedBatchDelete()" id="btn-batch-delete-go" class="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold">
+            🗑️ Delete All Listed Items
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Batch Remote Cloud Offload (rclone) -->
+  <div id="batch-rclone-modal" class="hidden fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+    <div class="glass rounded-2xl max-w-2xl w-full p-6 space-y-4 border border-cyan-500/40">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-cyan-200">Batch Store Selected in Remote Cloud (rclone)</h3>
+        <button onclick="closeBatchRcloneModal()" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+      <p class="text-xs text-slate-300">
+        Uploads each selected item with <code class="text-cyan-300">rclone copy --checksum</code> and verifies remote durability with <code class="text-cyan-300">rclone check</code>. Local originals are deleted ONLY if remote checksum verification succeeds AND you check the option below.
+      </p>
+      <div class="space-y-2 text-xs">
+        <label class="block text-slate-300">Remote Target Prefix (e.g. <code>gdrive:CloudSpaceGuard_Vault/</code>)</label>
+        <input id="batch-rclone-remote-input" type="text" placeholder="remote:CloudSpaceGuard_Vault/" class="w-full font-mono" />
+        <label class="flex items-center gap-2 text-amber-200 cursor-pointer pt-1">
+          <input id="batch-rclone-delete-after" type="checkbox" class="accent-rose-400" />
+          <span>Delete each local original ONLY after remote <code>rclone check</code> succeeds</span>
+        </label>
+      </div>
+      <div id="batch-rclone-list" class="max-h-48 overflow-y-auto space-y-1 text-xs font-mono text-slate-300 bg-slate-900/80 p-3 rounded-xl border border-slate-800"></div>
+      <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
+        <button onclick="closeBatchRcloneModal()" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold">Cancel</button>
+        <button onclick="executeBatchRclone(true)" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700">Dry-Run Batch</button>
+        <button onclick="executeBatchRclone(false)" class="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold">☁️ Upload &amp; Verify All</button>
       </div>
     </div>
   </div>
@@ -2046,8 +2121,13 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
           resultsEl.innerHTML = `<div class="text-xs text-emerald-300">Scanned ${data.scanned_files} file(s) (&ge; 1 MB). Zero exact SHA-256 duplicates found.</div>`;
         } else {
           resultsEl.innerHTML = `
-            <div class="text-xs text-amber-300 font-semibold">
-              Found ${groups.length} duplicate group(s) across ${data.scanned_files} scanned files — ${fmtBytes(data.total_wasted_bytes)} redundant space (read-only audit):
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="text-xs text-amber-300 font-semibold">
+                Found ${groups.length} duplicate group(s) across ${data.scanned_files} scanned files — ${fmtBytes(data.total_wasted_bytes)} redundant space (read-only audit):
+              </div>
+              <button onclick="deleteAllDuplicateExtras()" class="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold">
+                🗑️ Preview &amp; Delete All Redundant Copies (Keep First in Each Group)
+              </button>
             </div>
             ${groups.map(g => `
               <div class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1.5 text-xs">
@@ -2252,6 +2332,208 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       } catch (e) {
         showToast(`Delete error: ${e.message}`, true);
         recordActivity('Local Delete', false, e.message);
+      } finally {
+        endWork();
+      }
+    }
+
+    // ── Batch Select-All, Batch Delete, & Batch Remote Cloud Offload ──
+    function selectAllSafeCaches(checked) {
+      state.selectedCaches.clear();
+      if (checked) {
+        state.caches.filter(c => c.safe_level === 'safe').forEach(c => state.selectedCaches.add(c.id));
+      }
+      renderCaches();
+    }
+
+    function selectAllSubTargets(checked) {
+      state.selectedSubTargets.clear();
+      if (checked) {
+        state.projectTargets.forEach(t => state.selectedSubTargets.add(t.path));
+      }
+      renderProjectTargets();
+    }
+
+    let _pendingBatchDeletePaths = [];
+    function _resolveBatchPaths(source) {
+      if (source === 'tray') return Array.from(state.collectorTray);
+      if (source === 'duplicates') {
+        const extras = [];
+        ((state.duplicates && state.duplicates.duplicate_groups) || []).forEach(g => {
+          (g.files || []).slice(1).forEach(f => extras.push(f.path));
+        });
+        return extras;
+      }
+      return Array.from(state.selectedFiles);
+    }
+
+    function deleteAllDuplicateExtras() {
+      openBatchDeleteModal('duplicates');
+    }
+
+    function openBatchDeleteModal(source) {
+      const paths = _resolveBatchPaths(source);
+      if (!paths.length) {
+        showToast('Select at least one item first.', true);
+        return;
+      }
+      _pendingBatchDeletePaths = paths;
+      const listEl = document.getElementById('batch-delete-list');
+      const sumEl = document.getElementById('batch-delete-summary');
+      const sizeMap = new Map((state.candidates || []).map(c => [c.path, c.size_bytes]));
+      let totalEst = 0;
+      listEl.innerHTML = paths.map(p => {
+        const sz = sizeMap.get(p);
+        if (typeof sz === 'number') totalEst += sz;
+        return `<div class="p-2 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-between gap-2 font-mono">
+          <span class="truncate text-white">${escHtml(p)}</span>
+          <span class="text-cyan-300 shrink-0">${typeof sz === 'number' ? fmtBytes(sz) : ''}</span>
+        </div>`;
+      }).join('');
+      sumEl.textContent = totalEst > 0 ? `${paths.length} item(s) (~${fmtBytes(totalEst)})` : `${paths.length} item(s)`;
+      document.getElementById('confirm-batch-delete-modal').classList.remove('hidden');
+    }
+
+    function closeBatchDeleteModal() {
+      _pendingBatchDeletePaths = [];
+      document.getElementById('confirm-batch-delete-modal').classList.add('hidden');
+    }
+
+    async function executeConfirmedBatchDelete() {
+      const paths = _pendingBatchDeletePaths.slice();
+      closeBatchDeleteModal();
+      if (!paths.length) return;
+      beginWork('Batch Deleting Selected Items', `Removing ${paths.length} item(s) from disk...`);
+      let totalFreed = 0;
+      let deletedCount = 0;
+      const deletedItems = [];
+      const errors = [];
+      let firstTel = null;
+      let lastTel = null;
+      try {
+        for (const p of paths) {
+          const res = await fetch(`${API_BASE}/api/delete-local-path`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: p, confirm_delete: true })
+          });
+          const data = await res.json();
+          if (data.ok) {
+            if (!firstTel) firstTel = data.telemetry_before;
+            lastTel = data.telemetry_after;
+            totalFreed += (data.freed_bytes || 0);
+            deletedCount += 1;
+            deletedItems.push({ name: data.name, path: data.path, is_dir: data.is_dir, size_bytes: data.freed_bytes });
+            state.selectedFiles.delete(p);
+            state.collectorTray.delete(p);
+          } else {
+            errors.push(`${p}: ${data.error}`);
+          }
+        }
+        state.sessionReclaimedBytes += totalFreed;
+        const msg = `Batch deleted ${deletedCount}/${paths.length} item(s) — freed ${fmtBytes(totalFreed)}`;
+        showToast(`✓ ${msg}`, errors.length > 0 && deletedCount === 0);
+        recordActivity('Batch Delete', deletedCount > 0, msg, {
+          telemetryBefore: firstTel,
+          telemetryAfter: lastTel,
+          deletedCount,
+          deletedItems,
+          freedBytes: totalFreed,
+          partialErrors: errors
+        });
+        if (!document.getElementById('tab-panel-explorer')?.classList.contains('hidden')) {
+          if (state.explorer && state.explorer.path) await loadExplorer(state.explorer.path);
+          if (state.duplicates) await scanDuplicates();
+        }
+        await refreshLiveScan(false);
+      } catch (e) {
+        showToast(`Batch delete error: ${e.message}`, true);
+        recordActivity('Batch Delete', false, e.message);
+      } finally {
+        endWork();
+      }
+    }
+
+    let _pendingBatchRclonePaths = [];
+    function openBatchRcloneModal(source) {
+      const paths = _resolveBatchPaths(source);
+      if (!paths.length) {
+        showToast('Select or stage at least one item first.', true);
+        return;
+      }
+      _pendingBatchRclonePaths = paths;
+      const listEl = document.getElementById('batch-rclone-list');
+      listEl.innerHTML = paths.map(p => `<div class="truncate">• ${escHtml(p)}</div>`).join('');
+      const existingRemote = (document.getElementById('rclone-remote-input')?.value || '').trim();
+      if (existingRemote) {
+        document.getElementById('batch-rclone-remote-input').value = existingRemote;
+      }
+      document.getElementById('batch-rclone-modal').classList.remove('hidden');
+    }
+
+    function closeBatchRcloneModal() {
+      _pendingBatchRclonePaths = [];
+      document.getElementById('batch-rclone-modal').classList.add('hidden');
+    }
+
+    async function executeBatchRclone(dryRun) {
+      const paths = _pendingBatchRclonePaths.slice();
+      const remoteTarget = (document.getElementById('batch-rclone-remote-input')?.value || '').trim();
+      const deleteAfter = Boolean(document.getElementById('batch-rclone-delete-after')?.checked);
+      if (!remoteTarget) {
+        showToast('Enter an rclone remote target prefix (e.g. gdrive:CloudSpaceGuard_Vault/).', true);
+        return;
+      }
+      closeBatchRcloneModal();
+      beginWork(dryRun ? 'rclone Batch Dry-Run' : 'rclone Batch Upload & Verify', `${paths.length} item(s) -> ${remoteTarget}`);
+      let okCount = 0;
+      let totalFreed = 0;
+      const errors = [];
+      let firstTel = null;
+      let lastTel = null;
+      try {
+        for (const p of paths) {
+          const res = await fetch(`${API_BASE}/api/rclone-verify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              source_path: p,
+              remote_target: remoteTarget,
+              dry_run: dryRun,
+              delete_source_after_remote_verify: !dryRun && deleteAfter
+            })
+          });
+          const data = await res.json();
+          if (data.ok) {
+            okCount += 1;
+            if (!firstTel) firstTel = data.telemetry_before;
+            lastTel = data.telemetry_after;
+            if (!data.source_retained) {
+              totalFreed += (data.freed_bytes || 0);
+              state.selectedFiles.delete(p);
+              state.collectorTray.delete(p);
+            }
+          } else {
+            errors.push(`${p}: ${data.error}`);
+          }
+        }
+        state.sessionReclaimedBytes += totalFreed;
+        const msg = dryRun
+          ? `rclone batch dry-run: ${okCount}/${paths.length} OK (sources retained)`
+          : totalFreed > 0
+            ? `rclone batch verified ${okCount}/${paths.length} & freed ${fmtBytes(totalFreed)}`
+            : `rclone batch uploaded & checksum-verified ${okCount}/${paths.length} (sources retained)`;
+        showToast(okCount > 0 ? `✓ ${msg}` : `rclone batch failed: ${errors[0] || 'check rclone config'}`, okCount === 0);
+        recordActivity('rclone Batch', okCount > 0, msg, {
+          telemetryBefore: firstTel,
+          telemetryAfter: lastTel,
+          freedBytes: totalFreed,
+          partialErrors: errors
+        });
+        if (totalFreed > 0) await refreshLiveScan(false);
+      } catch (e) {
+        showToast(`rclone batch error: ${e.message}`, true);
+        recordActivity('rclone Batch', false, e.message);
       } finally {
         endWork();
       }
