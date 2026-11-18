@@ -366,6 +366,41 @@
       </div>
     </section>
 
+    <!-- 1-Click Easy Workflows Bar -->
+    <section id="easy-workflows-bar" class="glass rounded-2xl p-4 border border-cyan-500/30 space-y-2.5">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div class="text-xs font-bold uppercase tracking-wider text-cyan-300">
+          ⚡ 1-Click Easy Workflows
+        </div>
+        <div class="text-[11px] text-slate-400">
+          All destructive actions preview exact paths &amp; sizes first; originals are never auto-deleted by local sync copies.
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <button onclick="oneClickSelectAllCandidates()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold border border-slate-700">
+          ☑ Select All Large Files
+        </button>
+        <button onclick="oneClickStoreAllVault()" class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold">
+          🛡️ Store All in Local Vault
+        </button>
+        <button onclick="oneClickStoreAllRemote()" class="px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold">
+          ☁️ Store All in Remote Cloud (rclone)
+        </button>
+        <button onclick="oneClickDeleteAllCandidates()" class="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold">
+          🗑️ Delete All Selected / Large Files...
+        </button>
+        <button onclick="oneClickCleanAllSafeCaches()" class="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-emerald-600 text-amber-200 hover:text-white border border-amber-500/40 text-xs font-bold">
+          🧹 Clean All Safe Caches...
+        </button>
+        <button onclick="oneClickCleanAllSubTargets()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-emerald-600 text-slate-200 hover:text-white border border-slate-700 text-xs font-semibold">
+          🛠️ Clean All Build &amp; Xcode Sub-Targets...
+        </button>
+        <button onclick="oneClickDeduplicate()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-600 text-slate-200 hover:text-white border border-slate-700 text-xs font-semibold">
+          🔍 Scan &amp; Delete All Exact Duplicates...
+        </button>
+      </div>
+    </section>
+
     <!-- Navigation Tabs -->
     <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-3">
       <div class="flex flex-wrap gap-2">
@@ -2536,6 +2571,83 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
         recordActivity('rclone Batch', false, e.message);
       } finally {
         endWork();
+      }
+    }
+
+    // ── 1-Click Easy Workflows ──
+    function oneClickSelectAllCandidates() {
+      if (!state.candidates.length) {
+        showToast('No large candidate files > 25 MB detected yet.', true);
+        return;
+      }
+      toggleSelectAllFiles(true);
+      switchTab('offload');
+      showToast(`Selected all ${state.selectedFiles.size} large file(s)/folder(s).`);
+    }
+
+    async function oneClickStoreAllVault() {
+      if (!state.selectedFiles.size) {
+        toggleSelectAllFiles(true);
+      }
+      if (!state.selectedFiles.size) {
+        showToast('No candidate files available to copy.', true);
+        return;
+      }
+      switchTab('offload');
+      await runBatchOffload(false);
+    }
+
+    function oneClickStoreAllRemote() {
+      if (!state.selectedFiles.size) {
+        toggleSelectAllFiles(true);
+      }
+      if (!state.selectedFiles.size) {
+        showToast('No candidate files available for remote rclone offload.', true);
+        return;
+      }
+      switchTab('offload');
+      openBatchRcloneModal('candidates');
+    }
+
+    function oneClickDeleteAllCandidates() {
+      if (!state.selectedFiles.size) {
+        toggleSelectAllFiles(true);
+      }
+      if (!state.selectedFiles.size) {
+        showToast('No candidate files available to delete.', true);
+        return;
+      }
+      switchTab('offload');
+      openBatchDeleteModal('candidates');
+    }
+
+    function oneClickCleanAllSafeCaches() {
+      selectAllSafeCaches(true);
+      if (!state.selectedCaches.size) {
+        showToast('No verified safe caches detected to clean.', true);
+        return;
+      }
+      switchTab('caches');
+      openSafeCleanModal(false);
+    }
+
+    async function oneClickCleanAllSubTargets() {
+      switchTab('caches');
+      await loadProjectTargets();
+      if (!state.projectTargets.length) {
+        showToast('No project build or Xcode sub-targets found.', true);
+        return;
+      }
+      selectAllSubTargets(true);
+      await cleanSelectedProjectTargets();
+    }
+
+    async function oneClickDeduplicate() {
+      switchTab('explorer');
+      await scanDuplicates();
+      const groups = (state.duplicates && state.duplicates.duplicate_groups) || [];
+      if (groups.length) {
+        deleteAllDuplicateExtras();
       }
     }
 
