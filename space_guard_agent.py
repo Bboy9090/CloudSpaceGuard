@@ -18,7 +18,9 @@ Features:
 from __future__ import annotations
 
 import argparse
+import ctypes
 import datetime
+import errno
 import hashlib
 import http.server
 import time
@@ -578,15 +580,18 @@ def scan_offload_candidates(min_size_mb: float = 25.0, force_refresh: bool = Fal
                     continue
                 if sz >= min_bytes:
                     st = proj.stat()
+                    age_days = max(0, int((time.time() - st.st_mtime) // 86400))
                     candidates.append({
                         "name": f"{proj.name} (Project Snapshot Folder)",
                         "path": str(proj),
                         "is_directory": True,
+                        "category": "Folder",
                         "size_bytes": sz,
                         "size_gb": round(sz / (1024 ** 3), 2),
                         "size_mb": round(sz / (1024 ** 2), 1),
                         "size_formatted": f"{round(sz / (1024 ** 3), 2)} GB",
                         "modified": datetime.datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M"),
+                        "age_days": age_days,
                         "already_in_cloud": None,
                         "recommended_action": "Archive (.tar.gz) + SHA-256 Local Vault Copy (Source Retained)",
                     })
@@ -627,15 +632,18 @@ def scan_offload_candidates(min_size_mb: float = 25.0, force_refresh: bool = Fal
                         seen_paths.add(str(fpath))
                         in_icloud = "com~apple~CloudDocs" in str(fpath)
                         in_gdrive = "GoogleDrive-" in str(fpath)
+                        age_days = max(0, int((time.time() - st.st_mtime) // 86400))
                         candidates.append({
                             "name": fname,
                             "path": str(fpath),
                             "is_directory": False,
+                            "category": _classify_extension(fname, False),
                             "size_bytes": st.st_size,
                             "size_gb": round(st.st_size / (1024 ** 3), 2),
                             "size_mb": round(st.st_size / (1024 ** 2), 1),
                             "size_formatted": f"{round(st.st_size / (1024 ** 2), 1)} MB",
                             "modified": datetime.datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M"),
+                            "age_days": age_days,
                             "already_in_cloud": "icloud" if in_icloud else ("gdrive" if in_gdrive else None),
                             "recommended_action": (
                                 "In iCloud Folder (Verify Local Vault Copy; Source Retained)"
@@ -842,6 +850,33 @@ def _safe_extract_tar(tar: tarfile.TarFile, target_dir: Path) -> None:
     tar.extractall(path=resolved_root)
 
 
+def _rename_directory_no_replace(source: Path, destination: Path) -> None:
+    """Atomically install a directory only when the destination is absent."""
+    if sys.platform == "win32":
+        os.rename(source, destination)
+        return
+    libc = ctypes.CDLL(None, use_errno=True)
+    if sys.platform == "darwin":
+        rename = getattr(libc, "renamex_np", None)
+        if rename is None:
+            raise OSError(errno.ENOTSUP, "Atomic no-replace rename unavailable")
+        rename.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint]
+        rename.restype = ctypes.c_int
+        result = rename(os.fsencode(source), os.fsencode(destination), 0x4)  # RENAME_EXCL
+    elif sys.platform.startswith("linux"):
+        rename = getattr(libc, "renameat2", None)
+        if rename is None:
+            raise OSError(errno.ENOTSUP, "Atomic no-replace rename unavailable")
+        rename.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+        rename.restype = ctypes.c_int
+        result = rename(-100, os.fsencode(source), -100, os.fsencode(destination), 1)  # RENAME_NOREPLACE
+    else:
+        raise OSError(errno.ENOTSUP, "Atomic no-replace rename unavailable")
+    if result != 0:
+        code = ctypes.get_errno()
+        raise OSError(code, os.strerror(code), str(destination))
+
+
 def restore_from_stub(stub_path_str: str) -> Dict[str, Any]:
     stub_path = Path(stub_path_str).expanduser().resolve()
     if not stub_path.exists():
@@ -884,29 +919,24 @@ def restore_from_stub(stub_path_str: str) -> Dict[str, Any]:
                     raise ValueError("Archive lacks the expected directory root.")
                 if os.path.lexists(orig_file):
                     return {"ok": False, "error": f"Restore destination already exists: {orig_file}"}
-                os.replace(staged_root, orig_file)
+                _rename_directory_no_replace(staged_root, orig_file)
             restored_sha = remote_sha
         else:
             orig_file.parent.mkdir(parents=True, exist_ok=True)
-            # Exclusive creation also rejects dangling symlinks and concurrent
-            # creators instead of overwriting newly created local work.
-            try:
-                destination = orig_file.open("xb")
-            except FileExistsError:
-                return {"ok": False, "error": f"Restore destination already exists: {orig_file}"}
-            try:
-                with destination, cloud_file.open("rb") as source:
+            with tempfile.TemporaryDirectory(prefix="csg-file-restore-", dir=orig_file.parent) as staging:
+                staged = Path(staging) / "content"
+                with cloud_file.open("rb") as source, staged.open("xb") as destination:
                     shutil.copyfileobj(source, destination)
-            except Exception:
-                orig_file.unlink(missing_ok=True)
-                raise
-            restored_sha = compute_sha256(orig_file)
-            if restored_sha != meta.get("sha256"):
-                orig_file.unlink(missing_ok=True)
-                return {
-                    "ok": False,
-                    "error": f"Local write SHA-256 verification failed! Expected {meta.get('sha256')}, got {restored_sha}",
-                }
+                restored_sha = compute_sha256(staged)
+                if restored_sha != meta.get("sha256"):
+                    return {
+                        "ok": False,
+                        "error": f"Local write SHA-256 verification failed! Expected {meta.get('sha256')}, got {restored_sha}",
+                    }
+                try:
+                    os.link(staged, orig_file)
+                except FileExistsError:
+                    return {"ok": False, "error": f"Restore destination already exists: {orig_file}"}
 
         stub_path.unlink()
         entry = {
@@ -1407,6 +1437,112 @@ def get_rclone_status() -> Dict[str, Any]:
     return {"ok": True, "installed": True, "remotes": remotes, "binary": rclone_bin}
 
 
+def evict_cloud_download(target_path_str: str) -> Dict[str, Any]:
+    """macOS FileProvider / iCloud eviction via `brctl evict` (reclaims local cache without deleting cloud file)."""
+    if sys.platform != "darwin":
+        return {"ok": False, "error": "Cloud download eviction (`brctl evict`) is only supported on macOS."}
+    if not target_path_str:
+        return {"ok": False, "error": "Target path is required."}
+    req_path = Path(target_path_str).expanduser().resolve()
+    if not req_path.exists():
+        return {"ok": False, "error": f"Path not found: {req_path}"}
+    home = Path.home().resolve()
+    allowed_roots = [
+        (home / "Library" / "Mobile Documents").resolve(),
+        (home / "Library" / "CloudStorage").resolve(),
+    ]
+    in_cloud_mount = False
+    for root in allowed_roots:
+        try:
+            req_path.relative_to(root)
+            in_cloud_mount = True
+            break
+        except ValueError:
+            continue
+    if not in_cloud_mount:
+        return {"ok": False, "error": f"Refused: '{req_path}' is not inside macOS Mobile Documents or CloudStorage."}
+    brctl_bin = shutil.which("brctl")
+    if not brctl_bin:
+        return {"ok": False, "error": "`brctl` utility not found on macOS."}
+
+    telemetry_before = get_disk_telemetry()
+    before_bytes = dir_size_bytes(req_path) if req_path.is_dir() else (req_path.stat().st_blocks * 512)
+    job_id = _start_job("cloud_evict", req_path.name, "Evicting local cloud download via brctl")
+    try:
+        proc = subprocess.run([brctl_bin, "evict", str(req_path)], capture_output=True, text=True, timeout=60)
+        if proc.returncode != 0:
+            err = proc.stderr.strip() or proc.stdout.strip() or f"brctl exited with code {proc.returncode}"
+            _finish_job(job_id, False, "Cloud eviction failed", err[:180])
+            return {"ok": False, "error": err, "telemetry_before": telemetry_before, "telemetry_after": get_disk_telemetry()}
+        telemetry_after = get_disk_telemetry()
+        delta = max(0, telemetry_after["free_bytes"] - telemetry_before["free_bytes"])
+        entry = {
+            "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
+            "action": "cloud_evicted",
+            "file_name": req_path.name,
+            "original_path": str(req_path),
+            "cloud_destination": "Cloud-Only Placeholder (brctl evict)",
+            "size_bytes": delta or before_bytes,
+            "sha256": "BRCTL-EVICT",
+            "verified": True,
+        }
+        append_ledger(entry)
+        _finish_job(job_id, True, "Evicted local cloud download", req_path.name)
+        return {
+            "ok": True,
+            "path": str(req_path),
+            "name": req_path.name,
+            "before_bytes": before_bytes,
+            "disk_free_delta_bytes": delta,
+            "telemetry_before": telemetry_before,
+            "telemetry_after": telemetry_after,
+            "entry": entry,
+        }
+    except Exception as exc:
+        _finish_job(job_id, False, "Cloud eviction failed", str(exc))
+        return {"ok": False, "error": str(exc)}
+
+
+def build_smart_cleanup_plan(target_free_gb: Optional[float] = None) -> Dict[str, Any]:
+    """Build a prioritized, read-only cleanup plan (Safe Caches -> Build Sub-Targets -> Exact Duplicates)."""
+    telemetry = get_disk_telemetry()
+    if target_free_gb is not None:
+        deficit_bytes = max(0, int((float(target_free_gb) * (1024 ** 3)) - telemetry["free_bytes"]))
+    else:
+        deficit_bytes = max(0, int((telemetry.get("deficit_gb") or 0) * (1024 ** 3)))
+
+    safe_caches = [c for c in scan_system_caches() if c.get("safe_level") == "safe" and c.get("size_bytes", 0) > 0]
+    sub_targets = [t for t in list_granular_clean_targets() if t.get("size_bytes", 0) > 0]
+    dup_scan = find_duplicate_files(min_mb=5.0)
+    dup_extras: List[Dict[str, Any]] = []
+    for grp in dup_scan.get("duplicate_groups", []):
+        for f in (grp.get("files") or [])[1:]:
+            dup_extras.append({
+                "path": f["path"],
+                "size_bytes": grp["file_size_bytes"],
+                "sha256": grp["sha256"],
+            })
+
+    safe_bytes = sum(c["size_bytes"] for c in safe_caches)
+    sub_bytes = sum(t["size_bytes"] for t in sub_targets)
+    dup_bytes = sum(d["size_bytes"] for d in dup_extras)
+    total_reclaimable = safe_bytes + sub_bytes + dup_bytes
+
+    return {
+        "ok": True,
+        "telemetry": telemetry,
+        "deficit_bytes": deficit_bytes,
+        "estimated_reclaim_bytes": total_reclaimable,
+        "covers_deficit": total_reclaimable >= deficit_bytes if deficit_bytes > 0 else True,
+        "safe_caches": safe_caches,
+        "safe_caches_bytes": safe_bytes,
+        "sub_targets": sub_targets,
+        "sub_targets_bytes": sub_bytes,
+        "duplicate_extras": dup_extras,
+        "duplicate_extras_bytes": dup_bytes,
+    }
+
+
 def delete_local_path(target_path_str: str, confirm_delete: bool = False) -> Dict[str, Any]:
     """Explicitly delete a user-confirmed local file or subfolder to reclaim disk space."""
     if not confirm_delete:
@@ -1709,6 +1845,12 @@ class SpaceGuardRequestHandler(http.server.BaseHTTPRequestHandler):
             self._send_json(get_rclone_status())
             return
 
+        if parsed.path == "/api/smart-plan":
+            tgt = qs.get("target_gb", [None])[0]
+            res = build_smart_cleanup_plan(float(tgt) if tgt is not None else None)
+            self._send_json(res)
+            return
+
                 # Static file fallback
         web_dir = Path(__file__).resolve().parent / "web"
         rel = parsed.path.lstrip("/") or "index.html"
@@ -1833,6 +1975,12 @@ class SpaceGuardRequestHandler(http.server.BaseHTTPRequestHandler):
                 target_path_str=data.get("path", ""),
                 confirm_delete=bool(data.get("confirm_delete", False)),
             )
+            res["telemetry"] = get_disk_telemetry()
+            self._send_json(res, status=200 if res.get("ok") else 400)
+            return
+
+        if parsed.path == "/api/evict-cloud-download":
+            res = evict_cloud_download(data.get("path", ""))
             res["telemetry"] = get_disk_telemetry()
             self._send_json(res, status=200 if res.get("ok") else 400)
             return

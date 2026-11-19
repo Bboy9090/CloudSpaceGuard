@@ -417,6 +417,25 @@ class DataSafetyLifecycleTests(unittest.TestCase):
             self.assertIn("telemetry_before", ok_del)
             self.assertIn("telemetry_after", ok_del)
 
+    def test_evict_cloud_download_rejects_non_cloud_paths_and_smart_plan_computes_totals(self):
+        with patch.object(Path, "home", return_value=self.root):
+            local_file = self.root / "Documents" / "keep.txt"
+            local_file.parent.mkdir(parents=True, exist_ok=True)
+            local_file.write_text("keep", encoding="utf-8")
+
+            res = guard.evict_cloud_download(str(local_file))
+            self.assertFalse(res["ok"])
+            self.assertTrue(local_file.exists())
+
+        with patch.object(guard, "scan_system_caches", return_value=[{"id": "c1", "safe_level": "safe", "size_bytes": 4096}]), \
+             patch.object(guard, "list_granular_clean_targets", return_value=[{"path": "/x", "size_bytes": 8192}]), \
+             patch.object(guard, "find_duplicate_files", return_value={"duplicate_groups": []}):
+            plan = guard.build_smart_cleanup_plan(target_free_gb=5000.0)
+            self.assertTrue(plan["ok"])
+            self.assertEqual(plan["safe_caches_bytes"], 4096)
+            self.assertEqual(plan["sub_targets_bytes"], 8192)
+            self.assertEqual(plan["estimated_reclaim_bytes"], 12288)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -245,6 +245,22 @@
     <div class="splash-bar-track"><div class="splash-bar-fill"></div></div>
   </div>
 
+  <!-- Modal: Smart Cleanup Plan -->
+  <div id="smart-plan-modal" class="hidden fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+    <div class="glass rounded-2xl max-w-2xl w-full p-6 space-y-4 border border-cyan-500/40">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-white">✨ Smart "Hit Target Free Space" Cleanup Plan</h3>
+        <button onclick="closeSmartPlanModal()" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+      <div id="smart-plan-body" class="space-y-3 text-xs text-slate-300">
+        <div>Calculating prioritized safe cleanup plan...</div>
+      </div>
+      <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
+        <button onclick="closeSmartPlanModal()" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold">Close</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     window.dismissAppSplash = function () {
       const el = document.getElementById("app-splash-overlay");
@@ -366,6 +382,16 @@
       </div>
     </section>
 
+    <!-- Disk Pressure Watchdog Alert (shown automatically when free space < 10 GB) -->
+    <div id="disk-pressure-alert" class="hidden rounded-2xl p-4 bg-rose-500/15 border border-rose-500/40 flex flex-wrap items-center justify-between gap-3">
+      <div class="text-xs text-rose-200">
+        <strong>⚠ Low Disk Space Watchdog:</strong> Only <strong id="watchdog-free-gb">-- GB</strong> free on your primary volume. Run <strong>Smart Cleanup Plan</strong> or <strong>Clean All Safe Caches</strong> to reclaim space immediately.
+      </div>
+      <button onclick="openSmartPlanModal()" class="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shrink-0">
+        ✨ Open Smart Cleanup Plan
+      </button>
+    </div>
+
     <!-- 1-Click Easy Workflows Bar -->
     <section id="easy-workflows-bar" class="glass rounded-2xl p-4 border border-cyan-500/30 space-y-2.5">
       <div class="flex flex-wrap items-center justify-between gap-2">
@@ -377,6 +403,9 @@
         </div>
       </div>
       <div class="flex flex-wrap items-center gap-2">
+        <button onclick="openSmartPlanModal()" class="px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 text-xs font-bold shadow">
+          ✨ Smart Cleanup Plan
+        </button>
         <button onclick="oneClickSelectAllCandidates()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold border border-slate-700">
           ☑ Select All Large Files
         </button>
@@ -496,7 +525,13 @@
           <select id="candidate-sort" onchange="renderCandidates()" style="width: 150px;" class="text-xs">
             <option value="size_desc">Largest First</option>
             <option value="size_asc">Smallest First</option>
+            <option value="age_desc">Oldest First</option>
             <option value="name_asc">Name (A–Z)</option>
+          </select>
+          <select id="candidate-age-filter" onchange="renderCandidates()" style="width: 145px;" class="text-xs">
+            <option value="0">All Ages</option>
+            <option value="30">Untouched &gt; 30d</option>
+            <option value="90">Untouched &gt; 90d</option>
           </select>
           <button onclick="toggleSelectAllFiles(true)" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold border border-slate-700">
             Select All
@@ -902,6 +937,22 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
         <button onclick="closeBatchRcloneModal()" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold">Cancel</button>
         <button onclick="executeBatchRclone(true)" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700">Dry-Run Batch</button>
         <button onclick="executeBatchRclone(false)" class="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold">☁️ Upload &amp; Verify All</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Smart Cleanup Plan -->
+  <div id="smart-plan-modal" class="hidden fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+    <div class="glass rounded-2xl max-w-2xl w-full p-6 space-y-4 border border-cyan-500/40">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-white">✨ Smart "Hit Target Free Space" Cleanup Plan</h3>
+        <button onclick="closeSmartPlanModal()" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+      <div id="smart-plan-body" class="space-y-3 text-xs text-slate-300">
+        <div>Calculating prioritized safe cleanup plan...</div>
+      </div>
+      <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
+        <button onclick="closeSmartPlanModal()" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold">Close</button>
       </div>
     </div>
   </div>
@@ -1330,6 +1381,16 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       } else {
         deficitEl.innerHTML = `Need <strong class="text-amber-300">${t.deficit_gb} GB more</strong> to reach ${t.target_free_gb} GB goal.`;
       }
+      const alertEl = document.getElementById('disk-pressure-alert');
+      const alertGbEl = document.getElementById('watchdog-free-gb');
+      if (alertEl && alertGbEl) {
+        if (t.free_gb < 10) {
+          alertGbEl.textContent = `${t.free_gb} GB`;
+          alertEl.classList.remove('hidden');
+        } else {
+          alertEl.classList.add('hidden');
+        }
+      }
     }
 
     function renderProviders() {
@@ -1363,11 +1424,14 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
     function getFilteredCandidates() {
       const q = (document.getElementById('candidate-search')?.value || '').trim().toLowerCase();
       const sort = document.getElementById('candidate-sort')?.value || 'size_desc';
+      const minAge = parseInt(document.getElementById('candidate-age-filter')?.value || '0', 10) || 0;
       let list = state.candidates.filter(c =>
-        !q || c.name.toLowerCase().includes(q) || c.path.toLowerCase().includes(q)
+        (!q || c.name.toLowerCase().includes(q) || c.path.toLowerCase().includes(q)) &&
+        ((c.age_days || 0) >= minAge)
       );
       list = list.slice();
       if (sort === 'size_asc') list.sort((a, b) => a.size_bytes - b.size_bytes);
+      else if (sort === 'age_desc') list.sort((a, b) => (b.age_days || 0) - (a.age_days || 0));
       else if (sort === 'name_asc') list.sort((a, b) => a.name.localeCompare(b.name));
       else list.sort((a, b) => b.size_bytes - a.size_bytes);
       return list;
@@ -1396,6 +1460,7 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
             <td class="p-3.5">
               <div class="font-semibold text-white">${escHtml(c.name)}</div>
               <div class="text-xs text-slate-400 font-mono truncate max-w-md">${escHtml(c.path)}</div>
+              <div class="text-[11px] text-slate-500 mt-0.5">${c.category ? `${escHtml(c.category)} • ` : ''}Modified ${escHtml(c.modified || '')}${typeof c.age_days === 'number' ? ` (${c.age_days}d ago)` : ''}</div>
             </td>
             <td class="p-3.5 font-mono text-xs text-cyan-300 font-semibold">
               ${fmtBytes(c.size_bytes)}
@@ -1406,6 +1471,7 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
               </span>
             </td>
             <td class="p-3.5 text-right space-x-1.5">
+              ${c.already_in_cloud ? `<button onclick="evictCloudPath(${JSON.stringify(c.path).replace(/"/g, '&quot;')})" class="px-2 py-1 rounded-lg bg-sky-600/80 hover:bg-sky-500 text-xs text-white font-semibold" title="Remove local download via brctl evict (keeps file in cloud)">Evict Local</button>` : ''}
               <button onclick="addToCollectorByIdx(${idx})" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-cyan-300" title="Stage in Collector Tray">
                 + Stage
               </button>
@@ -2648,6 +2714,86 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       const groups = (state.duplicates && state.duplicates.duplicate_groups) || [];
       if (groups.length) {
         deleteAllDuplicateExtras();
+      }
+    }
+
+    // ── Smart Cleanup Plan & Cloud Eviction ──
+    function closeSmartPlanModal() {
+      document.getElementById('smart-plan-modal').classList.add('hidden');
+    }
+
+    async function openSmartPlanModal() {
+      const modal = document.getElementById('smart-plan-modal');
+      const body = document.getElementById('smart-plan-body');
+      modal.classList.remove('hidden');
+      body.innerHTML = `<div class="text-slate-400">Scanning safe caches, build sub-targets, and exact duplicates...</div>`;
+      try {
+        const tgt = state.telemetry.target_free_gb || 74;
+        const res = await fetch(`${API_BASE}/api/smart-plan?target_gb=${encodeURIComponent(tgt)}`);
+        const d = await res.json();
+        if (!d.ok) {
+          body.innerHTML = `<div class="text-rose-300">${escHtml(d.error || 'Could not compute plan')}</div>`;
+          return;
+        }
+        body.innerHTML = `
+          <div class="p-3 rounded-xl bg-slate-900 border border-slate-800 flex flex-wrap justify-between gap-2">
+            <span>Target Deficit: <strong class="text-amber-300">${fmtBytes(d.deficit_bytes)}</strong></span>
+            <span>Estimated Safe + Duplicate Reclaim: <strong class="text-emerald-300">${fmtBytes(d.estimated_reclaim_bytes)}</strong></span>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-900/70 border border-slate-800 flex items-center justify-between gap-2">
+            <div>
+              <div class="font-bold text-white">1. Verified Safe Caches (${d.safe_caches.length} item(s))</div>
+              <div class="text-slate-400">Total: ${fmtBytes(d.safe_caches_bytes)}</div>
+            </div>
+            <button onclick="closeSmartPlanModal(); oneClickCleanAllSafeCaches();" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold">Preview &amp; Clean</button>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-900/70 border border-slate-800 flex items-center justify-between gap-2">
+            <div>
+              <div class="font-bold text-white">2. Project Build &amp; Xcode Sub-Targets (${d.sub_targets.length} item(s))</div>
+              <div class="text-slate-400">Total: ${fmtBytes(d.sub_targets_bytes)}</div>
+            </div>
+            <button onclick="closeSmartPlanModal(); oneClickCleanAllSubTargets();" class="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold">Clean All Sub-Targets</button>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-900/70 border border-slate-800 flex items-center justify-between gap-2">
+            <div>
+              <div class="font-bold text-white">3. Redundant Exact SHA-256 Duplicates (${d.duplicate_extras.length} extra copies)</div>
+              <div class="text-slate-400">Total: ${fmtBytes(d.duplicate_extras_bytes)}</div>
+            </div>
+            <button onclick="closeSmartPlanModal(); oneClickDeduplicate();" class="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold">Inspect &amp; Delete Extras</button>
+          </div>
+        `;
+      } catch (e) {
+        body.innerHTML = `<div class="text-rose-300">Plan error: ${escHtml(e.message)}</div>`;
+      }
+    }
+
+    async function evictCloudPath(filePath) {
+      beginWork('Evicting Local Cloud Download', filePath);
+      try {
+        const res = await fetch(`${API_BASE}/api/evict-cloud-download`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: filePath })
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          showToast(data.error || 'Eviction failed', true);
+          recordActivity('Cloud Evict', false, data.error || 'Failed');
+          return;
+        }
+        const freed = data.disk_free_delta_bytes || data.before_bytes || 0;
+        const msg = `Evicted local download for ${data.name} (kept in cloud)`;
+        showToast(`✓ ${msg}`);
+        recordActivity('Cloud Evict', true, msg, {
+          telemetryBefore: data.telemetry_before,
+          telemetryAfter: data.telemetry_after,
+          freedBytes: freed
+        });
+        await refreshLiveScan(false);
+      } catch (e) {
+        showToast(`Evict error: ${e.message}`, true);
+      } finally {
+        endWork();
       }
     }
 
