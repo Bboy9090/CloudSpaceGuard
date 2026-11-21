@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Cloud Space Guard
-Comment=Cross-Platform Multi-Cloud Offloader & SHA-256 Space Saver
+Comment=Verified Local Vault Copying, Cache Cleaner & Disk Telemetry
 Exec=cloud-space-guard
 Icon=cloud-space-guard
 Terminal=false

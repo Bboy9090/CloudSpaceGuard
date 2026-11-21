@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cloud Space Guard — Cross-Platform Multi-Cloud Offload &amp; Space Saver</title>
+  <title>Cloud Space Guard — Verified Local Vault Copy &amp; Cache Audit</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -159,13 +159,31 @@
     .z-30 { z-index: 30; }
     .z-50 { z-index: 50; }
     .accent-cyan-400 { accent-color: #22d3ee; }
+    .max-h-40 { max-height: 10rem; }
+    .max-h-64 { max-height: 16rem; }
+    .bg-amber-500\/15 { background-color: rgba(245, 158, 11, 0.16); }
+    .bg-cyan-600 { background-color: #0891b2; }
+    .border-cyan-500\/30 { border-color: rgba(6, 182, 212, 0.3); }
+    .text-rose-300 { color: #fda4af; }
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid rgba(255, 255, 255, 0.25);
+      border-top-color: #22d3ee;
+      border-radius: 9999px;
+      animation: csgSpin 0.75s linear infinite;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+    @keyframes csgSpin { to { transform: rotate(360deg); } }
     button { cursor: pointer; border: none; background: transparent; color: inherit; font: inherit; }
     button:hover { opacity: 0.94; }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
     table { width: 100%; border-collapse: collapse; }
     tr { border-bottom: 1px solid rgba(30, 41, 59, 0.7); }
     input[type="text"], select { color: #fff; background: #0f172a; border: 1px solid #334155; padding: 0.5rem 0.75rem; border-radius: 0.5rem; width: 100%; }
     @media (min-width: 768px) {
       .md\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .md\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     }
     @media (min-width: 1024px) {
       .lg\:grid-cols-12 { grid-template-columns: repeat(12, minmax(0, 1fr)); }
@@ -251,7 +269,7 @@
             </span>
           </div>
           <p class="text-xs text-slate-400">
-            All-For-One Space Saver &amp; Cryptographic Multi-Cloud Offloader • Verify SHA-256 Before Delete
+            Verified Local Vault Copies (Originals Retained) &amp; Selective Cache Audit
           </p>
         </div>
       </div>
@@ -279,27 +297,38 @@
                 Reclaim Space Safely for Bootcamp, VMs &amp; Heavy Builds
               </h2>
             </div>
-            <button onclick="refreshLiveScan()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-cyan-300 border border-slate-700 transition flex items-center gap-1.5">
+            <button onclick="refreshLiveScan(true)" id="btn-rescan" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-cyan-300 border border-slate-700 transition flex items-center gap-1.5">
               <span>↻</span> Re-Scan Disk Now
             </button>
           </div>
 
-          <!-- Progress Gauge -->
+          <!-- Progress Gauge & DaisyDisk-Style Storage Breakdown -->
           <div class="space-y-2">
             <div class="flex justify-between text-sm">
-              <span class="text-slate-300">Current Free Space: <strong class="text-white text-base" id="free-gb-label">-- GB</strong> <span class="text-slate-400 text-xs" id="total-gb-label">(of -- GB total)</span></span>
+              <span class="text-slate-300">Current Free Space: <strong class="text-white text-base" id="free-gb-label">-- GB</strong> <span class="text-slate-400 text-xs" id="total-gb-label">(scanning live disk...)</span></span>
               <span class="text-cyan-300 font-semibold">Target Goal: <strong id="target-gb-label">74.0 GB Free</strong></span>
             </div>
-            <div class="w-full h-4 bg-slate-900 rounded-full overflow-hidden border border-slate-800 relative">
-              <div id="free-space-bar" class="h-full progress-bar-shine transition-all duration-500" style="width: 15%"></div>
+            <div class="w-full h-4 bg-slate-900 rounded-full overflow-hidden border border-slate-800 relative flex" title="Storage breakdown: Used / Safe Caches / Review Caches / Free">
+              <div id="seg-used-other" class="h-full transition-all duration-500" style="width: 0%; background: #334155;"></div>
+              <div id="seg-safe-caches" class="h-full transition-all duration-500" style="width: 0%; background: #10b981;"></div>
+              <div id="seg-review-caches" class="h-full transition-all duration-500" style="width: 0%; background: #f59e0b;"></div>
+              <div id="free-space-bar" class="h-full progress-bar-shine transition-all duration-500" style="width: 0%;"></div>
+            </div>
+            <div class="flex flex-wrap justify-between items-center text-[11px] text-slate-400 gap-2 pt-0.5">
+              <div class="flex flex-wrap items-center gap-3">
+                <span><strong style="color:#94a3b8;">■</strong> Used: <span id="legend-used">--</span></span>
+                <span><strong style="color:#10b981;">■</strong> Verified Safe Caches: <span id="legend-safe-cache">--</span></span>
+                <span><strong style="color:#f59e0b;">■</strong> Review Caches: <span id="legend-review-cache">--</span></span>
+                <span><strong style="color:#22d3ee;">■</strong> Free Balance: <span id="legend-free">--</span></span>
+              </div>
             </div>
             <div class="flex justify-between items-center text-xs text-slate-400 pt-1">
-              <span id="deficit-status-text">Calculating space deficit...</span>
-              <span id="projected-gain-text" class="text-emerald-400 font-semibold">Selected Reclaimable: +0.0 GB</span>
+              <span id="deficit-status-text">Measuring live disk balance...</span>
+              <span id="projected-gain-text" class="text-emerald-400 font-semibold">Selected copies: 0.0 GB (originals retained)</span>
             </div>
           </div>
 
-          <!-- Preset Target Pills & 1-Click Smart Clean -->
+          <!-- Preset Target Pills -->
           <div class="flex flex-wrap items-center gap-2 pt-1">
             <span class="text-xs text-slate-400 mr-1">Quick Goal:</span>
             <button onclick="setTargetPreset(50)" class="preset-pill px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 border border-slate-700 transition">50 GB Free</button>
@@ -307,14 +336,14 @@
             <button onclick="setTargetPreset(100)" class="preset-pill px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 border border-slate-700 transition">100 GB Free</button>
           </div>
 
-          <!-- Slider + 1-Click Actions -->
+          <!-- Slider + Verified Actions -->
           <div class="pt-2 flex flex-wrap items-center gap-4">
             <div class="flex-1 min-w-[220px]">
               <label class="text-xs text-slate-400 block mb-1">Adjust Target Free Space (GB): <span id="slider-val-display" class="text-white font-bold">74 GB</span></label>
               <input type="range" id="target-slider" min="15" max="200" step="1" value="74" oninput="onTargetSliderChange(this.value)" class="w-full accent-cyan-400 cursor-pointer" />
             </div>
-            <button onclick="cleanAllSafeCaches()" id="btn-1click-clean" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-500/25 transition flex items-center gap-2">
-              <span>✨</span> 1-Click Smart Clean All Safe Caches
+            <button onclick="openSafeCleanModal(true)" id="btn-1click-clean" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-500/25 transition flex items-center gap-2">
+              <span>🧹</span> Preview &amp; Clean Safe Caches...
             </button>
             <button onclick="autoSelectForTarget()" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-semibold text-xs shadow-lg shadow-cyan-500/20 transition">
               ⚡ Auto-Select For Target
@@ -341,13 +370,13 @@
     <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-3">
       <div class="flex flex-wrap gap-2">
         <button onclick="switchTab('offload')" id="tab-btn-offload" class="tab-btn px-4 py-2 rounded-xl text-sm font-semibold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
-          1. Verify-Before-Delete Cloud Offload Queue
+          1. Local Vault Copy Queue
         </button>
         <button onclick="switchTab('caches')" id="tab-btn-caches" class="tab-btn px-4 py-2 rounded-xl text-sm font-semibold bg-slate-900 text-slate-300 border border-slate-800">
           2. System Cache &amp; Project Build Cleaner
         </button>
         <button onclick="switchTab('ledger')" id="tab-btn-ledger" class="tab-btn px-4 py-2 rounded-xl text-sm font-semibold bg-slate-900 text-slate-300 border border-slate-800">
-          3. Verified Cloud Stubs &amp; 1-Click Restore
+          3. Copy Receipts &amp; Restore
         </button>
         <button onclick="switchTab('cli')" id="tab-btn-cli" class="tab-btn px-4 py-2 rounded-xl text-sm font-semibold bg-slate-900 text-slate-300 border border-slate-800">
           4. Cross-Platform CLI &amp; OS Commands
@@ -365,21 +394,62 @@
     <!-- Notification Banner -->
     <div id="toast-banner" class="hidden rounded-xl p-4 border text-sm font-medium"></div>
 
+    <!-- Live Operations & Results Panel (Always Honest, Real-Time Work & Balance Delta) -->
+    <section id="live-work-panel" class="glass rounded-2xl p-5 space-y-4 border border-slate-800">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <span class="text-xs uppercase tracking-wider text-cyan-400 font-bold">Live Work &amp; Verified Results</span>
+          <span id="session-totals-badge" class="text-xs px-2.5 py-0.5 rounded-full bg-slate-900 border border-slate-700 text-slate-300">
+            Session: 0 B reclaimed • 0 B copied to vault
+          </span>
+        </div>
+        <button onclick="clearActivityLog()" class="text-xs text-slate-400 hover:text-white">Clear Log</button>
+      </div>
+
+      <!-- Active Running Job Bar -->
+      <div id="active-job-bar" class="hidden rounded-xl p-3.5 bg-cyan-500/15 border border-cyan-500/40 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-3 min-w-0">
+          <span class="spinner"></span>
+          <div class="min-w-0">
+            <div class="text-sm font-bold text-white truncate" id="active-job-title">Working...</div>
+            <div class="text-xs text-cyan-300 font-mono truncate" id="active-job-detail">Preparing operation...</div>
+          </div>
+        </div>
+        <span class="text-xs font-mono text-cyan-300 shrink-0" id="active-job-elapsed">0.0s</span>
+      </div>
+
+      <!-- Last Operation Receipt Card -->
+      <div id="last-receipt-card" class="hidden rounded-xl p-4 bg-slate-950/80 border border-slate-800 space-y-3">
+        <!-- Populated dynamically with exact before/after balance, deleted items, saved paths, and SHA-256 -->
+      </div>
+
+      <!-- Timestamped Activity Log -->
+      <div id="activity-log-list" class="space-y-1.5 max-h-40 overflow-y-auto pr-1 text-xs">
+        <div class="text-slate-500">No operations run yet in this session. Click any action button to see live progress and exact results.</div>
+      </div>
+    </section>
+
     <!-- TAB 1: Verify-Before-Delete Offload Queue -->
     <section id="tab-panel-offload" class="space-y-4">
       <div class="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h3 class="text-lg font-bold text-white">Large Local Files &amp; Archives Ready for Cloud Offload</h3>
+          <h3 class="text-lg font-bold text-white">Large Local Files &amp; Folders Ready to Copy</h3>
           <p class="text-xs text-slate-400">
-            Every file is hashed with SHA-256 locally, uploaded/verified in your chosen Cloud Vault (Google Drive, iCloud Drive, S3/R2/B2), and only removed locally after the remote checksum matches 100%.
+            Copies are verified in the selected local vault folder. Originals are retained; this does not reclaim space or confirm a remote cloud upload.
           </p>
         </div>
-        <div class="flex items-center gap-2">
-          <button onclick="runBatchOffload(true)" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700">
+        <div class="flex flex-wrap items-center gap-2">
+          <input id="candidate-search" type="text" placeholder="Filter files or folders..." oninput="renderCandidates()" style="width: 190px;" class="text-xs" />
+          <select id="candidate-sort" onchange="renderCandidates()" style="width: 150px;" class="text-xs">
+            <option value="size_desc">Largest First</option>
+            <option value="size_asc">Smallest First</option>
+            <option value="name_asc">Name (A–Z)</option>
+          </select>
+          <button onclick="runBatchOffload(true)" id="btn-batch-dryrun" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700">
             🔍 Dry-Run Verify Selected
           </button>
-          <button onclick="runBatchOffload(false)" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/20">
-            🛡️ Verify SHA-256 &amp; Offload Selected
+          <button onclick="runBatchOffload(false)" id="btn-batch-copy" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/20">
+            🛡️ Copy Selected to Local Vault
           </button>
         </div>
       </div>
@@ -408,8 +478,19 @@
         <div>
           <h3 class="text-lg font-bold text-white">Reclaimable System, Browser &amp; Developer Caches</h3>
           <p class="text-xs text-slate-400">
-            Clean non-destructive package caches (npm, pnpm, Cargo, Xcode DerivedData, Google caches, Playwright) or review heavy VM/Project build directories.
+            Inspect contents before cleaning. Verified safe caches can be purged individually or via confirmed selection; review targets show exact CLI commands.
           </p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <input id="cache-search" type="text" placeholder="Filter caches..." oninput="renderCaches()" style="width: 170px;" class="text-xs" />
+          <select id="cache-filter" onchange="renderCaches()" style="width: 155px;" class="text-xs">
+            <option value="all">All Detected</option>
+            <option value="safe">Safe to Clean Only</option>
+            <option value="review">Manual Review Only</option>
+          </select>
+          <button onclick="openSafeCleanModal(false)" id="btn-clean-selected-caches" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/20">
+            🧹 Preview &amp; Clean Selected (<span id="selected-cache-count">0</span>)
+          </button>
         </div>
       </div>
       <div id="caches-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -420,9 +501,9 @@
     <!-- TAB 3: Verified Cloud Stubs & Restore Ledger -->
     <section id="tab-panel-ledger" class="hidden space-y-4">
       <div>
-        <h3 class="text-lg font-bold text-white">Cryptographic Verification Ledger &amp; 1-Click Cloud Restore</h3>
+        <h3 class="text-lg font-bold text-white">Local Copy Ledger &amp; Restore</h3>
         <p class="text-xs text-slate-400">
-          Complete audit log of every SHA-256 verified cloud offload and cache cleanup. Click Restore on any stubbed file to pull it back from Google Drive, iCloud Drive, or your 3rd-party vault.
+          Local copy and cache cleanup log. Restore checks the receipt and refuses to overwrite an existing destination. Cloud synchronization is not verified.
         </p>
       </div>
       <div class="glass rounded-2xl overflow-hidden">
@@ -457,7 +538,7 @@
             <pre class="text-slate-300 overflow-x-auto"><code># Check disk &amp; cloud mounts for 74 GB Bootcamp goal
 python3 space_guard_agent.py status --target-gb 74
 
-# Verify SHA-256 &amp; offload file to Google Drive
+# Create a verified local vault copy in Google Drive folder (source retained)
 python3 space_guard_agent.py offload \
   --file ~/Downloads/large_archive.zip \
   --provider gdrive
@@ -516,24 +597,102 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
     </div>
   </div>
 
+  <!-- Modal: Inspect Cache Contents Before Cleaning -->
+  <div id="inspect-cache-modal" class="hidden fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+    <div class="glass rounded-2xl max-w-2xl w-full p-6 space-y-4 border border-slate-700">
+      <div class="flex items-center justify-between gap-2">
+        <div class="min-w-0">
+          <h3 class="text-base font-bold text-white truncate" id="inspect-modal-title">Cache Contents</h3>
+          <div class="text-xs text-slate-400 font-mono truncate" id="inspect-modal-path"></div>
+        </div>
+        <button onclick="closeInspectModal()" class="text-slate-400 hover:text-white shrink-0">✕</button>
+      </div>
+      <div id="inspect-modal-body" class="max-h-64 overflow-y-auto space-y-1.5 text-xs">
+        <div class="text-slate-400">Scanning directory entries...</div>
+      </div>
+      <div class="flex justify-between items-center pt-2 border-t border-slate-800">
+        <span class="text-xs text-slate-400" id="inspect-modal-summary"></span>
+        <div class="flex gap-2">
+          <button onclick="closeInspectModal()" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold">Close</button>
+          <button id="inspect-modal-clean-btn" class="hidden px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold">🧹 Clean This Safe Cache</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Preview & Confirm Safe Cache Cleanup -->
+  <div id="confirm-clean-modal" class="hidden fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+    <div class="glass rounded-2xl max-w-2xl w-full p-6 space-y-4 border border-slate-700">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-white">Preview &amp; Confirm Safe Cache Cleanup</h3>
+        <button onclick="closeConfirmCleanModal()" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+      <p class="text-xs text-slate-300">
+        Only verified <strong class="text-emerald-300">safe</strong> package/build/browser caches are eligible. Review the exact paths and current sizes that will be deleted:
+      </p>
+      <div id="confirm-clean-list" class="max-h-64 overflow-y-auto space-y-2 text-xs"></div>
+      <div class="flex justify-between items-center pt-2 border-t border-slate-800">
+        <div class="text-xs text-slate-300">
+          Estimated to purge: <strong class="text-cyan-300" id="confirm-clean-total">0 MB</strong>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="closeConfirmCleanModal()" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold">Cancel</button>
+          <button onclick="executeConfirmedCacheClean()" id="btn-confirm-clean-go" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold">
+            🧹 Delete Selected Cache Contents Now
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     const API_BASE = window.location.protocol === 'file:' ? 'http://127.0.0.1:7474' : '';
     let state = {
       osProfile: 'macos',
       selectedProviderId: 'gdrive',
       telemetry: {
-        total_gb: 396.0,
-        free_gb: 5.5,
-        used_gb: 390.5,
+        total_gb: null,
+        free_gb: null,
+        used_gb: null,
+        total_bytes: 0,
+        free_bytes: 0,
+        used_bytes: 0,
         target_free_gb: 74.0,
-        deficit_gb: 68.5
+        deficit_gb: null
       },
       providers: [],
       candidates: [],
       caches: [],
       ledger: [],
-      selectedFiles: new Set()
+      selectedFiles: new Set(),
+      selectedCaches: new Set(),
+      activityLog: [],
+      lastReceipt: null,
+      sessionReclaimedBytes: 0,
+      sessionCopiedBytes: 0,
+      busy: false
     };
+
+    let _jobPollTimer = null;
+    let _jobElapsedTimer = null;
+    let _jobStartedAt = 0;
+
+    function escHtml(str) {
+      return String(str ?? '').replace(/[&<>"']/g, s => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[s]);
+    }
+
+    function fmtBytes(bytes) {
+      if (bytes === null || bytes === undefined || Number.isNaN(Number(bytes))) return '—';
+      const n = Number(bytes);
+      const abs = Math.abs(n);
+      const sign = n < 0 ? '-' : '';
+      if (abs >= 1024 ** 3) return `${sign}${(abs / (1024 ** 3)).toFixed(2)} GB`;
+      if (abs >= 1024 ** 2) return `${sign}${(abs / (1024 ** 2)).toFixed(1)} MB`;
+      if (abs >= 1024) return `${sign}${(abs / 1024).toFixed(1)} KB`;
+      return `${sign}${abs} B`;
+    }
 
     function showToast(msg, isError = false) {
       const el = document.getElementById('toast-banner');
@@ -544,7 +703,162 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       }`;
       el.textContent = msg;
       el.classList.remove('hidden');
-      setTimeout(() => el.classList.add('hidden'), 7000);
+      setTimeout(() => el.classList.add('hidden'), 9000);
+    }
+
+    function beginWork(title, detail) {
+      state.busy = true;
+      _jobStartedAt = Date.now();
+      const bar = document.getElementById('active-job-bar');
+      document.getElementById('active-job-title').textContent = title;
+      document.getElementById('active-job-detail').textContent = detail || 'Working...';
+      document.getElementById('active-job-elapsed').textContent = '0.0s';
+      bar.classList.remove('hidden');
+
+      clearInterval(_jobElapsedTimer);
+      _jobElapsedTimer = setInterval(() => {
+        const secs = ((Date.now() - _jobStartedAt) / 1000).toFixed(1);
+        document.getElementById('active-job-elapsed').textContent = `${secs}s`;
+      }, 100);
+
+      clearInterval(_jobPollTimer);
+      _jobPollTimer = setInterval(async () => {
+        try {
+          const r = await fetch(`${API_BASE}/api/jobs`);
+          if (!r.ok) return;
+          const d = await r.json();
+          const active = (d.jobs || []).find(j => !j.done);
+          if (active) {
+            const countInfo = active.items_total > 0 ? ` (${active.items_done}/${active.items_total})` : '';
+            document.getElementById('active-job-title').textContent = `${active.phase}${countInfo}`;
+            if (active.detail) {
+              document.getElementById('active-job-detail').textContent = active.detail;
+            }
+          }
+        } catch (_) {}
+      }, 350);
+    }
+
+    function endWork() {
+      state.busy = false;
+      clearInterval(_jobPollTimer);
+      clearInterval(_jobElapsedTimer);
+      _jobPollTimer = null;
+      _jobElapsedTimer = null;
+      document.getElementById('active-job-bar').classList.add('hidden');
+    }
+
+    function recordActivity(kind, ok, summary, details = {}) {
+      const ts = new Date().toLocaleTimeString();
+      state.activityLog.unshift({ ts, kind, ok, summary });
+      if (state.activityLog.length > 40) state.activityLog.length = 40;
+      state.lastReceipt = { ts, kind, ok, summary, ...details };
+      renderActivityAndReceipt();
+    }
+
+    function clearActivityLog() {
+      state.activityLog = [];
+      state.lastReceipt = null;
+      renderActivityAndReceipt();
+    }
+
+    function renderActivityAndReceipt() {
+      document.getElementById('session-totals-badge').textContent =
+        `Session: ${fmtBytes(state.sessionReclaimedBytes)} reclaimed • ${fmtBytes(state.sessionCopiedBytes)} copied to vault`;
+
+      const receiptEl = document.getElementById('last-receipt-card');
+      const r = state.lastReceipt;
+      if (!r) {
+        receiptEl.classList.add('hidden');
+      } else {
+        receiptEl.classList.remove('hidden');
+        const badgeCls = r.ok
+          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+          : 'bg-rose-500/15 text-rose-200 border-rose-500/40';
+        let balanceHtml = '';
+        if (r.telemetryBefore && r.telemetryAfter) {
+          const delta = (r.telemetryAfter.free_bytes || 0) - (r.telemetryBefore.free_bytes || 0);
+          const deltaSign = delta > 0 ? '+' : '';
+          balanceHtml = `
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+              <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-800">
+                <div class="text-slate-400">Free Balance Before → After</div>
+                <div class="font-mono font-bold text-white">${r.telemetryBefore.free_gb} GB → ${r.telemetryAfter.free_gb} GB</div>
+              </div>
+              <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-800">
+                <div class="text-slate-400">Actual OS Disk Delta</div>
+                <div class="font-mono font-bold ${delta > 0 ? 'text-emerald-400' : 'text-cyan-300'}">${deltaSign}${fmtBytes(delta)}</div>
+              </div>
+              <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-800">
+                <div class="text-slate-400">Remaining to Target (${r.telemetryAfter.target_free_gb} GB)</div>
+                <div class="font-mono font-bold text-amber-300">${r.telemetryAfter.deficit_gb > 0 ? r.telemetryAfter.deficit_gb + ' GB needed' : '✓ Goal Met'}</div>
+              </div>
+            </div>
+          `;
+        }
+
+        let detailsHtml = '';
+        if (r.deletedItems && r.deletedItems.length) {
+          const rows = r.deletedItems.map(it =>
+            `<div class="flex justify-between font-mono text-[11px] text-slate-300 border-b border-slate-800/60 py-1">
+               <span class="truncate pr-2">- ${escHtml(it.name)}</span>
+               <span class="text-emerald-300 shrink-0">${fmtBytes(it.size_bytes)}</span>
+             </div>`
+          ).join('');
+          detailsHtml += `
+            <div class="space-y-1">
+              <div class="text-xs font-semibold text-emerald-300">Taken Out / Deleted (${r.deletedCount} item(s), ${fmtBytes(r.freedBytes)} measured removed):</div>
+              <div class="max-h-40 overflow-y-auto bg-slate-900/90 rounded-lg p-2.5 border border-slate-800">${rows}</div>
+            </div>
+          `;
+        }
+        if (r.partialErrors && r.partialErrors.length) {
+          detailsHtml += `
+            <div class="text-xs text-amber-300 bg-amber-500/15 border border-amber-500/30 rounded-lg p-2.5">
+              Skipped / Locked (${r.partialErrors.length}): ${escHtml(r.partialErrors.slice(0, 3).join(' | '))}
+            </div>
+          `;
+        }
+        if (r.savedInfo) {
+          detailsHtml += `
+            <div class="text-xs space-y-1 bg-slate-900/90 rounded-lg p-3 border border-slate-800 font-mono">
+              ${r.savedInfo.source ? `<div><span class="text-slate-400">Source:</span> <span class="text-white">${escHtml(r.savedInfo.source)}</span> <span class="text-cyan-300">(${escHtml(r.savedInfo.sourceStatus || 'Retained')})</span></div>` : ''}
+              ${r.savedInfo.dest ? `<div><span class="text-slate-400">Vault / Target:</span> <span class="text-emerald-300">${escHtml(r.savedInfo.dest)}</span></div>` : ''}
+              ${r.savedInfo.sha256 ? `<div><span class="text-slate-400">SHA-256:</span> <span class="text-cyan-300">${escHtml(r.savedInfo.sha256)}</span></div>` : ''}
+              ${r.savedInfo.stub ? `<div><span class="text-slate-400">Receipt:</span> <span class="text-slate-200">${escHtml(r.savedInfo.stub)}</span></div>` : ''}
+              ${r.savedInfo.note ? `<div class="text-slate-400 pt-1">${escHtml(r.savedInfo.note)}</div>` : ''}
+            </div>
+          `;
+        }
+
+        receiptEl.innerHTML = `
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <span class="text-[11px] px-2 py-0.5 rounded border font-semibold ${badgeCls}">${escHtml(r.kind)}</span>
+              <span class="text-sm font-bold text-white">${escHtml(r.summary)}</span>
+            </div>
+            <span class="text-[11px] font-mono text-slate-400">${escHtml(r.ts)}</span>
+          </div>
+          ${balanceHtml}
+          ${detailsHtml}
+        `;
+      }
+
+      const logEl = document.getElementById('activity-log-list');
+      if (!state.activityLog.length) {
+        logEl.innerHTML = `<div class="text-slate-500">No operations run yet in this session. Click any action button to see live progress and exact results.</div>`;
+      } else {
+        logEl.innerHTML = state.activityLog.map(item => `
+          <div class="flex items-center justify-between gap-2 py-1 border-b border-slate-800/60">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="${item.ok ? 'text-emerald-400' : 'text-rose-300'} font-bold">${item.ok ? '✓' : '✕'}</span>
+              <span class="text-slate-400 font-mono shrink-0">[${escHtml(item.ts)}]</span>
+              <span class="text-cyan-300 font-semibold shrink-0">${escHtml(item.kind)}:</span>
+              <span class="text-slate-200 truncate">${escHtml(item.summary)}</span>
+            </div>
+          </div>
+        `).join('');
+      }
     }
 
     function setOsProfile(prof) {
@@ -572,13 +886,18 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       });
     }
 
-    async function refreshLiveScan() {
-      // 1. Instant Initial Load: Status, Live Telemetry, System Caches, and Ledger
+    async function refreshLiveScan(userInitiated = false) {
+      const refreshParam = userInitiated ? 'refresh=1' : 'refresh=0';
+      const btn = document.getElementById('btn-rescan');
+      if (userInitiated) {
+        if (btn) btn.disabled = true;
+        beginWork('Re-scanning Disk, Caches & Large Files', 'Measuring live disk usage and directory sizes...');
+      }
       try {
         const [statusRes, cacheRes, ledgerRes] = await Promise.all([
-          fetch(API_BASE + '/api/status'),
-          fetch(API_BASE + '/api/caches'),
-          fetch(API_BASE + '/api/ledger')
+          fetch(`${API_BASE}/api/status`),
+          fetch(`${API_BASE}/api/caches?${refreshParam}`),
+          fetch(`${API_BASE}/api/ledger`)
         ]);
         if (statusRes.ok) {
           const statusData = await statusRes.json();
@@ -591,6 +910,9 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
         if (cacheRes && cacheRes.ok) {
           const cacheData = await cacheRes.json();
           state.caches = cacheData.caches || [];
+          // Prune stale selections
+          const validIds = new Set(state.caches.filter(c => c.safe_level === 'safe').map(c => c.id));
+          state.selectedCaches = new Set(Array.from(state.selectedCaches).filter(id => validIds.has(id)));
         }
         if (ledgerRes && ledgerRes.ok) {
           const ledgerData = await ledgerRes.json();
@@ -602,11 +924,14 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
         document.getElementById('agent-status-badge').textContent = 'Offline Standalone Mode';
         renderAll();
         if (window.dismissAppSplash) window.dismissAppSplash();
+        if (userInitiated) {
+          recordActivity('Disk Scan', false, `Could not reach local agent: ${e.message}`);
+          showToast(`Could not reach local agent: ${e.message}`, true);
+        }
       }
 
-      // 2. Progressive Load: Offload candidate files in background
       try {
-        const candRes = await fetch(API_BASE + '/api/candidates?min_mb=25');
+        const candRes = await fetch(`${API_BASE}/api/candidates?min_mb=25&${refreshParam}`);
         if (candRes.ok) {
           const candData = await candRes.json();
           state.candidates = candData.candidates || [];
@@ -615,14 +940,27 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
         }
       } catch (e) {
         console.warn('Candidate load note:', e);
+      } finally {
+        if (userInitiated) {
+          endWork();
+          if (btn) btn.disabled = false;
+          if (state.telemetry.free_gb !== null) {
+            recordActivity(
+              'Disk Scan',
+              true,
+              `Measured ${state.telemetry.free_gb} GB free (${state.caches.length} cache target(s), ${state.candidates.length} large item(s))`
+            );
+          }
+        }
       }
-    }
     }
 
     async function onTargetSliderChange(val) {
       const target = parseFloat(val);
       state.telemetry.target_free_gb = target;
-      state.telemetry.deficit_gb = Math.max(0, +(target - state.telemetry.free_gb).toFixed(2));
+      if (state.telemetry.free_gb !== null) {
+        state.telemetry.deficit_gb = Math.max(0, +(target - state.telemetry.free_gb).toFixed(2));
+      }
       document.getElementById('slider-val-display').textContent = `${target} GB`;
       renderTelemetry();
       try {
@@ -644,12 +982,14 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       }
       renderCandidates();
       renderTelemetry();
-      showToast(`Auto-selected ${state.selectedFiles.size} largest file(s) for SHA-256 Verified Cloud Offload. Check Tab 2 (System Caches) for additional space!`);
+      const msg = `Selected ${state.selectedFiles.size} item(s) for local vault copies; originals stay on disk.`;
+      showToast(msg);
+      recordActivity('Selection', true, msg);
     }
 
     function toggleSelectAllFiles(checked) {
       if (checked) {
-        state.candidates.forEach(c => state.selectedFiles.add(c.path));
+        getFilteredCandidates().forEach(c => state.selectedFiles.add(c.path));
       } else {
         state.selectedFiles.clear();
       }
@@ -657,11 +997,14 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       renderTelemetry();
     }
 
-    function toggleFileSelection(path) {
-      if (state.selectedFiles.has(path)) {
-        state.selectedFiles.delete(path);
+    function toggleFileSelection(idx) {
+      const list = getFilteredCandidates();
+      const c = list[idx];
+      if (!c) return;
+      if (state.selectedFiles.has(c.path)) {
+        state.selectedFiles.delete(c.path);
       } else {
-        state.selectedFiles.add(path);
+        state.selectedFiles.add(c.path);
       }
       renderCandidates();
       renderTelemetry();
@@ -669,6 +1012,13 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
 
     function renderTelemetry() {
       const t = state.telemetry;
+      if (t.free_gb === null || t.total_gb === null) {
+        document.getElementById('free-gb-label').textContent = '-- GB';
+        document.getElementById('total-gb-label').textContent = '(measuring live disk...)';
+        document.getElementById('deficit-status-text').textContent = 'Waiting for live telemetry from local agent...';
+        return;
+      }
+
       document.getElementById('free-gb-label').textContent = `${t.free_gb} GB`;
       document.getElementById('total-gb-label').textContent = `(of ${t.total_gb} GB total)`;
       document.getElementById('target-gb-label').textContent = `${t.target_free_gb} GB Free`;
@@ -678,14 +1028,30 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       state.candidates.forEach(c => {
         if (state.selectedFiles.has(c.path)) selectedBytes += c.size_bytes;
       });
-      const selectedGb = +(selectedBytes / (1024 ** 3)).toFixed(2);
-      const totalCacheGb = +(state.caches.reduce((acc, c) => acc + c.size_bytes, 0) / (1024 ** 3)).toFixed(2);
+      const safeCacheBytes = state.caches.filter(c => c.safe_level === 'safe').reduce((a, c) => a + c.size_bytes, 0);
+      const reviewCacheBytes = state.caches.filter(c => c.safe_level !== 'safe').reduce((a, c) => a + c.size_bytes, 0);
+      const totalBytes = Math.max(1, t.total_bytes || (t.total_gb * (1024 ** 3)));
+      const freeBytes = t.free_bytes || (t.free_gb * (1024 ** 3));
+      const usedBytes = Math.max(0, totalBytes - freeBytes);
+      const otherUsedBytes = Math.max(0, usedBytes - safeCacheBytes - reviewCacheBytes);
+
+      const pUsed = Math.max(0, (otherUsedBytes / totalBytes) * 100);
+      const pSafe = Math.max(0, (safeCacheBytes / totalBytes) * 100);
+      const pReview = Math.max(0, (reviewCacheBytes / totalBytes) * 100);
+      const pFree = Math.max(2, (freeBytes / totalBytes) * 100);
+
+      document.getElementById('seg-used-other').style.width = `${pUsed.toFixed(1)}%`;
+      document.getElementById('seg-safe-caches').style.width = `${pSafe.toFixed(1)}%`;
+      document.getElementById('seg-review-caches').style.width = `${pReview.toFixed(1)}%`;
+      document.getElementById('free-space-bar').style.width = `${pFree.toFixed(1)}%`;
+
+      document.getElementById('legend-used').textContent = fmtBytes(otherUsedBytes);
+      document.getElementById('legend-safe-cache').textContent = fmtBytes(safeCacheBytes);
+      document.getElementById('legend-review-cache').textContent = fmtBytes(reviewCacheBytes);
+      document.getElementById('legend-free').textContent = fmtBytes(freeBytes);
 
       document.getElementById('projected-gain-text').textContent =
-        `Selected Offload: +${selectedGb} GB | Reclaimable Caches: +${totalCacheGb} GB`;
-
-      const pct = Math.min(100, Math.max(4, Math.round((t.free_gb / Math.max(1, t.target_free_gb)) * 100)));
-      document.getElementById('free-space-bar').style.width = `${pct}%`;
+        `Selected copies: ${fmtBytes(selectedBytes)} (originals retained) | Safe caches: ${fmtBytes(safeCacheBytes)}`;
 
       const deficitEl = document.getElementById('deficit-status-text');
       if (t.free_gb >= t.target_free_gb) {
@@ -704,18 +1070,18 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       container.innerHTML = state.providers.map(p => {
         const isSel = p.id === state.selectedProviderId;
         return `
-          <div onclick="state.selectedProviderId='${p.id}'; renderProviders();"
+          <div onclick="state.selectedProviderId='${escHtml(p.id)}'; renderProviders();"
                class="p-2.5 rounded-xl border cursor-pointer transition flex items-center justify-between gap-2 ${
                  isSel ? 'bg-cyan-500/15 border-cyan-400' : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
                }">
             <div class="min-w-0">
               <div class="flex items-center gap-2">
-                <span class="text-xs font-bold text-white truncate">${p.name}</span>
+                <span class="text-xs font-bold text-white truncate">${escHtml(p.name)}</span>
                 <span class="text-[10px] px-1.5 py-0.5 rounded ${
                   p.connected ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'
                 }">${p.connected ? 'Ready' : 'Configurable'}</span>
               </div>
-              <div class="text-[11px] text-slate-400 truncate">${p.account_hint} • ${p.tier}</div>
+              <div class="text-[11px] text-slate-400 truncate">${escHtml(p.account_hint)} • ${escHtml(p.tier)}</div>
             </div>
             <input type="radio" name="active_provider" ${isSel ? 'checked' : ''} class="accent-cyan-400" />
           </div>
@@ -723,44 +1089,60 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       }).join('');
     }
 
+    function getFilteredCandidates() {
+      const q = (document.getElementById('candidate-search')?.value || '').trim().toLowerCase();
+      const sort = document.getElementById('candidate-sort')?.value || 'size_desc';
+      let list = state.candidates.filter(c =>
+        !q || c.name.toLowerCase().includes(q) || c.path.toLowerCase().includes(q)
+      );
+      list = list.slice();
+      if (sort === 'size_asc') list.sort((a, b) => a.size_bytes - b.size_bytes);
+      else if (sort === 'name_asc') list.sort((a, b) => a.name.localeCompare(b.name));
+      else list.sort((a, b) => b.size_bytes - a.size_bytes);
+      return list;
+    }
+
     function renderCandidates() {
       const tbody = document.getElementById('candidates-table-body');
-      if (!state.candidates.length) {
+      const list = getFilteredCandidates();
+      if (!list.length) {
         tbody.innerHTML = `
           <tr>
             <td colspan="5" class="p-8 text-center text-slate-400 text-sm">
-              No standalone files &gt; 15 MB found in standard user folders, or check <strong>Tab 2: System Cache &amp; Project Build Cleaner</strong> where <strong>35+ GB</strong> of reclaimable caches and containers were detected!
+              ${state.candidates.length ? 'No items match your current filter.' : 'No standalone files &gt; 25 MB found in standard user folders. Check <strong>Tab 2: System Cache &amp; Project Build Cleaner</strong> or click <strong>Re-Scan Disk Now</strong>.'}
             </td>
           </tr>
         `;
         return;
       }
-      tbody.innerHTML = state.candidates.map(c => {
+      tbody.innerHTML = list.map((c, idx) => {
         const checked = state.selectedFiles.has(c.path);
-        const safePath = c.path.replace(/'/g, "\\'");
         return `
           <tr class="hover:bg-slate-900/40 transition">
             <td class="p-3.5">
-              <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleFileSelection('${safePath}')" class="accent-cyan-400" />
+              <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleFileSelection(${idx})" class="accent-cyan-400" />
             </td>
             <td class="p-3.5">
-              <div class="font-semibold text-white">${c.name}</div>
-              <div class="text-xs text-slate-400 font-mono truncate max-w-md">${c.path}</div>
+              <div class="font-semibold text-white">${escHtml(c.name)}</div>
+              <div class="text-xs text-slate-400 font-mono truncate max-w-md">${escHtml(c.path)}</div>
             </td>
             <td class="p-3.5 font-mono text-xs text-cyan-300 font-semibold">
-              ${c.size_gb >= 0.1 ? c.size_gb + ' GB' : c.size_mb + ' MB'}
+              ${fmtBytes(c.size_bytes)}
             </td>
             <td class="p-3.5">
               <span class="text-xs px-2.5 py-1 rounded-lg bg-slate-800 text-slate-200 border border-slate-700">
-                ${c.recommended_action}
+                ${escHtml(c.recommended_action)}
               </span>
             </td>
             <td class="p-3.5 text-right space-x-1.5">
-              <button onclick="offloadSingle('${safePath}', true)" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300">
+              <button onclick="revealCandidatePath(${idx})" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300" title="Show in file manager">
+                Reveal
+              </button>
+              <button onclick="offloadCandidate(${idx}, true)" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300">
                 Hash Check
               </button>
-              <button onclick="offloadSingle('${safePath}', false)" class="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white">
-                Verify &amp; Offload
+              <button onclick="offloadCandidate(${idx}, false)" class="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white">
+                Copy to Vault
               </button>
             </td>
           </tr>
@@ -768,44 +1150,82 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       }).join('');
     }
 
+    function toggleCacheSelection(cacheId, checked) {
+      if (checked) state.selectedCaches.add(cacheId);
+      else state.selectedCaches.delete(cacheId);
+      document.getElementById('selected-cache-count').textContent = String(state.selectedCaches.size);
+    }
+
     function renderCaches() {
       const grid = document.getElementById('caches-grid');
-      if (!state.caches.length) {
-        grid.innerHTML = `<div class="text-sm text-slate-400">No large system caches detected.</div>`;
+      const q = (document.getElementById('cache-search')?.value || '').trim().toLowerCase();
+      const filt = document.getElementById('cache-filter')?.value || 'all';
+      document.getElementById('selected-cache-count').textContent = String(state.selectedCaches.size);
+
+      const visible = state.caches.filter(item => {
+        if (filt === 'safe' && item.safe_level !== 'safe') return false;
+        if (filt === 'review' && item.safe_level === 'safe') return false;
+        if (q && !item.name.toLowerCase().includes(q) && !item.path.toLowerCase().includes(q)) return false;
+        return true;
+      });
+
+      if (!visible.length) {
+        grid.innerHTML = `<div class="text-sm text-slate-400">No matching system or developer caches detected.</div>`;
         return;
       }
-      grid.innerHTML = state.caches.map(item => {
+
+      grid.innerHTML = visible.map(item => {
         const isSafe = item.safe_level === 'safe';
+        const isChecked = state.selectedCaches.has(item.id);
         return `
           <div class="glass rounded-2xl p-5 flex flex-col justify-between gap-4 border ${
             isSafe ? 'border-slate-800' : 'border-amber-500/30'
           }">
             <div class="space-y-2">
               <div class="flex items-start justify-between gap-2">
-                <div>
-                  <span class="text-[11px] uppercase tracking-wider font-bold ${
-                    isSafe ? 'text-emerald-400' : 'text-amber-400'
-                  }">${item.category}</span>
-                  <h4 class="text-base font-bold text-white">${item.name}</h4>
+                <div class="flex items-start gap-2.5 min-w-0">
+                  ${isSafe
+                    ? `<input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleCacheSelection('${escHtml(item.id)}', this.checked)" class="accent-cyan-400 mt-1 shrink-0" title="Select for batch cleanup" />`
+                    : ''
+                  }
+                  <div class="min-w-0">
+                    <span class="text-[11px] uppercase tracking-wider font-bold ${
+                      isSafe ? 'text-emerald-400' : 'text-amber-400'
+                    }">${escHtml(item.category)} • ${isSafe ? 'Verified Safe' : 'Manual Review'}</span>
+                    <h4 class="text-base font-bold text-white">${escHtml(item.name)}</h4>
+                  </div>
                 </div>
-                <span class="text-sm font-mono font-black px-3 py-1 rounded-xl bg-slate-900 border border-slate-700 text-cyan-300">
-                  ${item.size_gb >= 0.1 ? item.size_gb + ' GB' : item.size_mb + ' MB'}
+                <span class="text-sm font-mono font-black px-3 py-1 rounded-xl bg-slate-900 border border-slate-700 text-cyan-300 shrink-0">
+                  ${fmtBytes(item.size_bytes)}
                 </span>
               </div>
-              <p class="text-xs text-slate-400">${item.description}</p>
+              <p class="text-xs text-slate-400">${escHtml(item.description)}</p>
               <div class="text-[11px] font-mono text-slate-300 bg-slate-950/80 px-3 py-1.5 rounded-lg border border-slate-800 truncate">
-                Path: ${item.path}
+                Path: ${escHtml(item.path)}
               </div>
             </div>
-            <div class="flex items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
-              <code class="text-[11px] text-slate-400 truncate">${item.clean_cmd}</code>
-              ${
-                isSafe
-                  ? `<button onclick="cleanCacheById('${item.id}')" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shrink-0">
-                       🧹 Clean Safe Cache
-                     </button>`
-                  : `<span class="text-xs text-amber-300 font-semibold shrink-0">Review CLI Command</span>`
-              }
+            <div class="space-y-2 pt-2 border-t border-slate-800/80">
+              <div class="flex items-center justify-between gap-2">
+                <code class="text-[11px] text-slate-400 truncate">${escHtml(item.clean_cmd)}</code>
+                <button onclick="copyCliCmd('${escHtml(item.id)}', this)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300 shrink-0">
+                  Copy CLI
+                </button>
+              </div>
+              <div class="flex flex-wrap items-center justify-end gap-2">
+                <button onclick="inspectCache('${escHtml(item.id)}')" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold">
+                  🔍 Inspect Contents
+                </button>
+                <button onclick="revealCachePath('${escHtml(item.id)}')" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold">
+                  Reveal
+                </button>
+                ${
+                  isSafe
+                    ? `<button onclick="cleanCacheById('${escHtml(item.id)}', this)" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shrink-0">
+                         🧹 Clean Safe Cache
+                       </button>`
+                    : `<span class="text-xs text-amber-300 font-semibold px-2">Manual CLI Review Required</span>`
+                }
+              </div>
             </div>
           </div>
         `;
@@ -818,29 +1238,30 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
         tbody.innerHTML = `
           <tr>
             <td colspan="6" class="p-8 text-center text-slate-400 text-sm">
-              No cloud offloads or cache cleanups recorded yet in this session.
+              No vault copies or cache cleanups recorded yet.
             </td>
           </tr>
         `;
         return;
       }
-      tbody.innerHTML = state.ledger.map(entry => {
-        const mb = (entry.size_bytes / (1024 ** 2)).toFixed(1);
-        const stub = entry.stub_path ? entry.stub_path.replace(/'/g, "\\'") : '';
+      tbody.innerHTML = state.ledger.map((entry, idx) => {
+        const sizeStr = entry.size_bytes !== null && entry.size_bytes !== undefined
+          ? fmtBytes(entry.size_bytes)
+          : '—';
         return `
           <tr class="hover:bg-slate-900/40">
-            <td class="p-3.5 text-xs text-slate-400 font-mono">${entry.timestamp}</td>
-            <td class="p-3.5 font-semibold text-white">${entry.file_name}</td>
-            <td class="p-3.5 text-xs text-slate-300 font-mono truncate max-w-xs">${entry.cloud_destination}</td>
-            <td class="p-3.5 text-xs font-mono text-cyan-300">${mb} MB</td>
-            <td class="p-3.5 text-xs font-mono text-emerald-400">${(entry.sha256 || '').slice(0, 16)}...</td>
+            <td class="p-3.5 text-xs text-slate-400 font-mono">${escHtml(entry.timestamp)}</td>
+            <td class="p-3.5 font-semibold text-white">${escHtml(entry.file_name)}</td>
+            <td class="p-3.5 text-xs text-slate-300 font-mono truncate max-w-xs">${escHtml(entry.cloud_destination)}</td>
+            <td class="p-3.5 text-xs font-mono text-cyan-300">${sizeStr}</td>
+            <td class="p-3.5 text-xs font-mono text-emerald-400">${escHtml((entry.sha256 || '').slice(0, 16))}${entry.sha256 && entry.sha256.length > 16 ? '...' : ''}</td>
             <td class="p-3.5 text-right">
               ${
-                stub
-                  ? `<button onclick="restoreStub('${stub}')" class="px-3 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/30 text-xs font-semibold">
+                entry.stub_path
+                  ? `<button onclick="restoreLedgerIndex(${idx})" class="px-3 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/30 text-xs font-semibold">
                        ↶ Restore Local
                      </button>`
-                  : `<span class="text-xs text-slate-500">Completed</span>`
+                  : `<span class="text-xs text-slate-500">${escHtml(entry.action || 'Completed')}</span>`
               }
             </td>
           </tr>
@@ -848,8 +1269,157 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       }).join('');
     }
 
+    async function offloadCandidate(idx, dryRun) {
+      const c = getFilteredCandidates()[idx];
+      if (!c) return;
+      await offloadSingle(c.path, dryRun);
+    }
+
+    async function revealCandidatePath(idx) {
+      const c = getFilteredCandidates()[idx];
+      if (!c) return;
+      await revealPath(c.path);
+    }
+
+    async function revealCachePath(cacheId) {
+      const item = state.caches.find(c => c.id === cacheId);
+      if (!item) return;
+      await revealPath(item.path);
+    }
+
+    async function revealPath(targetPath) {
+      try {
+        const res = await fetch(`${API_BASE}/api/reveal-path`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: targetPath })
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          showToast(data.error || 'Could not reveal path', true);
+          return;
+        }
+        recordActivity('Reveal Path', true, `Opened ${targetPath}`);
+      } catch (e) {
+        showToast(`Reveal failed: ${e.message}`, true);
+      }
+    }
+
+    async function copyCliCmd(cacheId, btnEl) {
+      const item = state.caches.find(c => c.id === cacheId);
+      if (!item) return;
+      try {
+        await navigator.clipboard.writeText(item.clean_cmd);
+        if (btnEl) {
+          const prev = btnEl.textContent;
+          btnEl.textContent = '✓ Copied';
+          setTimeout(() => { btnEl.textContent = prev; }, 2000);
+        }
+        recordActivity('Copy CLI', true, `Copied command for ${item.name}`);
+      } catch (e) {
+        showToast(`Command: ${item.clean_cmd}`);
+      }
+    }
+
+    async function inspectCache(cacheId) {
+      const modal = document.getElementById('inspect-cache-modal');
+      const body = document.getElementById('inspect-modal-body');
+      const cleanBtn = document.getElementById('inspect-modal-clean-btn');
+      const item = state.caches.find(c => c.id === cacheId);
+      document.getElementById('inspect-modal-title').textContent = item ? item.name : cacheId;
+      document.getElementById('inspect-modal-path').textContent = item ? item.path : '';
+      document.getElementById('inspect-modal-summary').textContent = 'Scanning real directory contents...';
+      body.innerHTML = `<div class="flex items-center gap-2 text-cyan-300"><span class="spinner"></span> Measuring entries...</div>`;
+      cleanBtn.classList.add('hidden');
+      modal.classList.remove('hidden');
+
+      try {
+        const res = await fetch(`${API_BASE}/api/cache-inspect?id=${encodeURIComponent(cacheId)}`);
+        const data = await res.json();
+        if (!data.ok) {
+          body.innerHTML = `<div class="text-rose-200">${escHtml(data.error)}</div>`;
+          return;
+        }
+        document.getElementById('inspect-modal-summary').textContent =
+          `${data.total_items} top-level entry(ies) found (showing top ${data.items.length})`;
+        if (!data.items.length) {
+          body.innerHTML = `<div class="text-slate-400">Directory is currently empty.</div>`;
+        } else {
+          body.innerHTML = data.items.map(it => `
+            <div class="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-900 border border-slate-800">
+              <div class="font-mono text-slate-200 truncate">${it.is_dir ? '📁' : '📄'} ${escHtml(it.name)}</div>
+              <div class="font-mono text-cyan-300 shrink-0">${fmtBytes(it.size_bytes)}</div>
+            </div>
+          `).join('');
+        }
+        if (data.safe_level === 'safe' && data.total_items > 0) {
+          cleanBtn.classList.remove('hidden');
+          cleanBtn.onclick = () => {
+            closeInspectModal();
+            cleanCacheById(cacheId);
+          };
+        }
+        recordActivity('Inspect Cache', true, `Inspected ${data.name}: ${data.total_items} top-level item(s)`);
+      } catch (e) {
+        body.innerHTML = `<div class="text-rose-200">Error inspecting cache: ${escHtml(e.message)}</div>`;
+      }
+    }
+
+    function closeInspectModal() {
+      document.getElementById('inspect-cache-modal').classList.add('hidden');
+    }
+
+    function openSafeCleanModal(selectAllSafe = false) {
+      const safeCaches = state.caches.filter(c => c.safe_level === 'safe' && c.size_bytes > 0);
+      if (!safeCaches.length) {
+        showToast('No verified safe caches with reclaimable data are currently detected.');
+        recordActivity('Cache Preview', true, 'No verified safe caches detected');
+        return;
+      }
+      if (selectAllSafe || !state.selectedCaches.size) {
+        safeCaches.forEach(c => state.selectedCaches.add(c.id));
+        renderCaches();
+      }
+      const chosen = safeCaches.filter(c => state.selectedCaches.has(c.id));
+      const listEl = document.getElementById('confirm-clean-list');
+      let totalBytes = 0;
+      listEl.innerHTML = chosen.map(c => {
+        totalBytes += c.size_bytes;
+        return `
+          <div class="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <div class="font-bold text-white">${escHtml(c.name)}</div>
+              <div class="font-mono text-[11px] text-slate-400 truncate">${escHtml(c.path)}</div>
+            </div>
+            <div class="font-mono text-emerald-300 font-bold shrink-0">${fmtBytes(c.size_bytes)}</div>
+          </div>
+        `;
+      }).join('');
+      document.getElementById('confirm-clean-total').textContent = fmtBytes(totalBytes);
+      document.getElementById('confirm-clean-modal').classList.remove('hidden');
+    }
+
+    function closeConfirmCleanModal() {
+      document.getElementById('confirm-clean-modal').classList.add('hidden');
+    }
+
+    async function executeConfirmedCacheClean() {
+      const ids = Array.from(state.selectedCaches);
+      closeConfirmCleanModal();
+      if (!ids.length) return;
+      for (const id of ids) {
+        await cleanCacheById(id);
+        state.selectedCaches.delete(id);
+      }
+      renderCaches();
+    }
+
     async function offloadSingle(filePath, dryRun) {
       const leaveStub = document.getElementById('leave-stub-checkbox').checked;
+      beginWork(
+        dryRun ? 'Dry-Run Hash Check' : 'Copying & Verifying to Local Vault',
+        filePath
+      );
       try {
         const res = await fetch(`${API_BASE}/api/offload`, {
           method: 'POST',
@@ -864,16 +1434,44 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
         const data = await res.json();
         if (!data.ok) {
           showToast(`Verification Blocked: ${data.error}`, true);
+          recordActivity(dryRun ? 'Hash Check' : 'Vault Copy', false, data.error);
           return;
         }
         if (dryRun) {
-          showToast(`Dry-Run SHA-256 Verified: ${data.local_sha256.slice(0, 20)}... → Ready for ${data.cloud_destination}`);
+          const msg = `Hash Check OK: ${data.file_name} (${fmtBytes(data.size_bytes)}) — source retained`;
+          showToast(msg);
+          recordActivity('Hash Check', true, msg, {
+            savedInfo: {
+              source: data.original_path || filePath,
+              sourceStatus: 'Retained (Dry-Run)',
+              dest: data.cloud_destination,
+              sha256: data.local_sha256 || 'Directory (hashed during archive creation)',
+              note: 'Dry-run only. No files copied and no local space reclaimed.'
+            }
+          });
         } else {
-          showToast(`✓ Verified SHA-256 & Offloaded ${data.entry.file_name} to Cloud Vault!`);
-          await refreshLiveScan();
+          state.sessionCopiedBytes += (data.size_bytes || 0);
+          const msg = `Verified local vault copy: ${data.entry.file_name} (${fmtBytes(data.size_bytes)}) — original retained`;
+          showToast(msg);
+          recordActivity('Vault Copy', true, msg, {
+            telemetryBefore: data.telemetry_before,
+            telemetryAfter: data.telemetry_after,
+            savedInfo: {
+              source: data.entry.original_path,
+              sourceStatus: 'Retained on disk (0 B local reclaimed)',
+              dest: data.entry.cloud_destination,
+              sha256: data.entry.sha256,
+              stub: data.entry.stub_path,
+              note: data.message
+            }
+          });
+          await refreshLiveScan(false);
         }
       } catch (e) {
         showToast(`Error contacting local agent: ${e.message}`, true);
+        recordActivity(dryRun ? 'Hash Check' : 'Vault Copy', false, e.message);
+      } finally {
+        endWork();
       }
     }
 
@@ -895,36 +1493,14 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       }
     }
 
-    async function cleanAllSafeCaches() {
-      const btn = document.getElementById('btn-1click-clean');
-      if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '<span>⏳</span> Cleaning Safe Caches...';
+    async function cleanCacheById(cacheId, btnEl = null) {
+      const item = state.caches.find(c => c.id === cacheId);
+      const label = item ? item.name : cacheId;
+      if (btnEl) {
+        btnEl.disabled = true;
+        btnEl.textContent = 'Cleaning...';
       }
-      try {
-        const res = await fetch(, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Content-Length': '2' },
-          body: '{}'
-        });
-        const data = await res.json();
-        if (data.ok) {
-          showToast();
-          await refreshLiveScan();
-        } else {
-          showToast(, true);
-        }
-      } catch (e) {
-        showToast(, true);
-      } finally {
-        if (btn) {
-          btn.disabled = false;
-          btn.innerHTML = '<span>✨</span> 1-Click Smart Clean All Safe Caches';
-        }
-      }
-    }
-
-    async function cleanCacheById(cacheId) {
+      beginWork(`Cleaning Cache: ${label}`, item ? item.path : cacheId);
       try {
         const res = await fetch(`${API_BASE}/api/clean-cache`, {
           method: 'POST',
@@ -934,16 +1510,45 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
         const data = await res.json();
         if (!data.ok) {
           showToast(data.error, true);
+          recordActivity('Cache Clean', false, `${label}: ${data.error}`, {
+            telemetryBefore: data.telemetry_before,
+            telemetryAfter: data.telemetry_after,
+            partialErrors: data.errors
+          });
           return;
         }
-        showToast(`✓ Cleaned cache and reclaimed ${data.freed_mb} MB!`);
-        await refreshLiveScan();
+        state.sessionReclaimedBytes += (data.freed_bytes || 0);
+        const msg = `Cleaned ${data.cache_name}: removed ${data.deleted_count} item(s), freed ${fmtBytes(data.freed_bytes)}`;
+        showToast(`✓ ${msg}`);
+        recordActivity('Cache Clean', true, msg, {
+          telemetryBefore: data.telemetry_before,
+          telemetryAfter: data.telemetry_after,
+          deletedCount: data.deleted_count,
+          deletedItems: data.deleted_items,
+          freedBytes: data.freed_bytes,
+          partialErrors: data.partial_errors
+        });
+        await refreshLiveScan(false);
       } catch (e) {
         showToast(`Failed to clean cache: ${e.message}`, true);
+        recordActivity('Cache Clean', false, `${label}: ${e.message}`);
+      } finally {
+        endWork();
+        if (btnEl) {
+          btnEl.disabled = false;
+          btnEl.textContent = '🧹 Clean Safe Cache';
+        }
       }
     }
 
+    async function restoreLedgerIndex(idx) {
+      const entry = state.ledger[idx];
+      if (!entry || !entry.stub_path) return;
+      await restoreStub(entry.stub_path);
+    }
+
     async function restoreStub(stubPath) {
+      beginWork('Restoring from Local Vault', stubPath);
       try {
         const res = await fetch(`${API_BASE}/api/restore`, {
           method: 'POST',
@@ -953,12 +1558,26 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
         const data = await res.json();
         if (!data.ok) {
           showToast(data.error, true);
+          recordActivity('Restore', false, data.error);
           return;
         }
-        showToast(`✓ Restored ${data.entry.file_name} and verified SHA-256 integrity!`);
-        await refreshLiveScan();
+        const msg = `Restored ${data.entry.file_name} with verified SHA-256`;
+        showToast(`✓ ${msg}`);
+        recordActivity('Restore', true, msg, {
+          telemetryAfter: data.telemetry_after,
+          savedInfo: {
+            source: data.entry.cloud_destination,
+            sourceStatus: 'Verified Vault Source',
+            dest: data.entry.original_path,
+            sha256: data.entry.sha256
+          }
+        });
+        await refreshLiveScan(false);
       } catch (e) {
         showToast(`Restore error: ${e.message}`, true);
+        recordActivity('Restore', false, e.message);
+      } finally {
+        endWork();
       }
     }
 
@@ -986,6 +1605,7 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
           toggleAddProviderModal(false);
           renderProviders();
           showToast(`Connected 3rd-party cloud container: ${name}`);
+          recordActivity('Add Vault', true, `Connected ${name} (${vault_path})`);
         }
       } catch (e) {
         showToast(`Could not save provider: ${e.message}`, true);
@@ -998,11 +1618,12 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       renderCandidates();
       renderCaches();
       renderLedger();
+      renderActivityAndReceipt();
     }
 
     window.addEventListener('DOMContentLoaded', () => {
       setOsProfile('macos');
-      refreshLiveScan();
+      refreshLiveScan(false);
     });
   </script>
 </body>
