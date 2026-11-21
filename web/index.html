@@ -261,6 +261,31 @@
     </div>
   </div>
 
+  <!-- Modal: 1-Click Auto-Optimize & Free Space -->
+  <div id="auto-optimize-modal" class="hidden fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+    <div class="glass rounded-2xl max-w-2xl w-full p-6 space-y-4 border border-emerald-500/40">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-white">🚀 1-Click Auto-Optimize &amp; Free Space</h3>
+        <button onclick="closeAutoOptimizeModal()" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+      <p class="text-xs text-slate-300">
+        CloudSpaceGuard automatically allocated your safe caches, build artifacts, cloud-synced downloads, and duplicates below. Review and click <strong>Execute Auto-Optimize Now</strong> to run everything in one pass.
+      </p>
+      <div id="auto-optimize-body" class="space-y-2.5 max-h-80 overflow-y-auto text-xs text-slate-300">
+        <div class="text-slate-400">Analyzing disk, caches, cloud mounts, and duplicates...</div>
+      </div>
+      <div class="flex justify-between items-center pt-2 border-t border-slate-800">
+        <div class="text-xs text-slate-300" id="auto-optimize-summary">Calculating...</div>
+        <div class="flex gap-2">
+          <button onclick="closeAutoOptimizeModal()" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold">Cancel</button>
+          <button onclick="executeAutoOptimize()" id="btn-auto-opt-go" class="hidden px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold">
+            🚀 Execute Auto-Optimize Now
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     window.dismissAppSplash = function () {
       const el = document.getElementById("app-splash-overlay");
@@ -403,6 +428,9 @@
         </div>
       </div>
       <div class="flex flex-wrap items-center gap-2">
+        <button onclick="oneClickAutoOptimize()" class="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 via-cyan-500 to-blue-600 hover:from-emerald-400 hover:to-blue-500 text-slate-950 text-xs font-extrabold shadow-lg shadow-cyan-500/25">
+          🚀 1-Click Auto-Optimize &amp; Free Space
+        </button>
         <button onclick="openSmartPlanModal()" class="px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 text-xs font-bold shadow">
           ✨ Smart Cleanup Plan
         </button>
@@ -953,6 +981,31 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       </div>
       <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
         <button onclick="closeSmartPlanModal()" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: 1-Click Auto-Optimize & Free Space -->
+  <div id="auto-optimize-modal" class="hidden fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+    <div class="glass rounded-2xl max-w-2xl w-full p-6 space-y-4 border border-emerald-500/40">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-white">🚀 1-Click Auto-Optimize &amp; Free Space</h3>
+        <button onclick="closeAutoOptimizeModal()" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+      <p class="text-xs text-slate-300">
+        CloudSpaceGuard automatically allocated your safe caches, build artifacts, cloud-synced downloads, and duplicates below. Review and click <strong>Execute Auto-Optimize Now</strong> to run everything in one pass.
+      </p>
+      <div id="auto-optimize-body" class="space-y-2.5 max-h-80 overflow-y-auto text-xs text-slate-300">
+        <div class="text-slate-400">Analyzing disk, caches, cloud mounts, and duplicates...</div>
+      </div>
+      <div class="flex justify-between items-center pt-2 border-t border-slate-800">
+        <div class="text-xs text-slate-300" id="auto-optimize-summary">Calculating...</div>
+        <div class="flex gap-2">
+          <button onclick="closeAutoOptimizeModal()" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold">Cancel</button>
+          <button onclick="executeAutoOptimize()" id="btn-auto-opt-go" class="hidden px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold">
+            🚀 Execute Auto-Optimize Now
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -2792,6 +2845,199 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
         await refreshLiveScan(false);
       } catch (e) {
         showToast(`Evict error: ${e.message}`, true);
+      } finally {
+        endWork();
+      }
+    }
+
+    // ── 1-Click Auto-Optimize & Free Space ──
+    let _autoOptPlan = null;
+    function closeAutoOptimizeModal() {
+      document.getElementById('auto-optimize-modal').classList.add('hidden');
+    }
+
+    async function oneClickAutoOptimize() {
+      const modal = document.getElementById('auto-optimize-modal');
+      const body = document.getElementById('auto-optimize-body');
+      const sumEl = document.getElementById('auto-optimize-summary');
+      const goBtn = document.getElementById('btn-auto-opt-go');
+      modal.classList.remove('hidden');
+      goBtn.classList.add('hidden');
+      body.innerHTML = `<div class="text-slate-400">Auto-allocating caches, build sub-targets, cloud evictions, and duplicates...</div>`;
+      sumEl.textContent = 'Scanning...';
+      try {
+        const tgt = state.telemetry.target_free_gb || 74;
+        const res = await fetch(`${API_BASE}/api/smart-plan?target_gb=${encodeURIComponent(tgt)}`);
+        const d = await res.json();
+        if (!d.ok) {
+          body.innerHTML = `<div class="text-rose-300">${escHtml(d.error || 'Could not build auto-optimize plan')}</div>`;
+          return;
+        }
+        const cloudItems = (state.candidates || []).filter(c => c.already_in_cloud);
+        const cloudBytes = cloudItems.reduce((a, c) => a + (c.size_bytes || 0), 0);
+        const localItems = (state.candidates || []).filter(c => !c.already_in_cloud).slice(0, 10);
+        const localBytes = localItems.reduce((a, c) => a + (c.size_bytes || 0), 0);
+        _autoOptPlan = { ...d, cloudItems, cloudBytes, localItems, localBytes };
+
+        const estFree = (d.safe_caches_bytes || 0) + (d.sub_targets_bytes || 0) + cloudBytes + (d.duplicate_extras_bytes || 0);
+        sumEl.innerHTML = `Estimated space freed: <strong class="text-emerald-300">${fmtBytes(estFree)}</strong>`;
+        goBtn.classList.remove('hidden');
+
+        body.innerHTML = `
+          <label class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start gap-2.5 cursor-pointer">
+            <input type="checkbox" id="opt-chk-caches" checked class="accent-emerald-400 mt-0.5" />
+            <div class="flex-1">
+              <div class="font-bold text-white">1. Clean Verified Safe Caches (${d.safe_caches.length} target(s) — ${fmtBytes(d.safe_caches_bytes)})</div>
+              <div class="text-[11px] text-slate-400 font-mono truncate">${escHtml(d.safe_caches.map(c => c.name).join(', ') || 'None')}</div>
+            </div>
+          </label>
+          <label class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start gap-2.5 cursor-pointer">
+            <input type="checkbox" id="opt-chk-subtargets" checked class="accent-emerald-400 mt-0.5" />
+            <div class="flex-1">
+              <div class="font-bold text-white">2. Clean Build &amp; Xcode Sub-Targets (${d.sub_targets.length} folder(s) — ${fmtBytes(d.sub_targets_bytes)})</div>
+              <div class="text-[11px] text-slate-400 font-mono truncate">${escHtml(d.sub_targets.map(t => `${t.project}/${t.name}`).join(', ') || 'None')}</div>
+            </div>
+          </label>
+          <label class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start gap-2.5 cursor-pointer">
+            <input type="checkbox" id="opt-chk-evict" ${cloudItems.length ? 'checked' : ''} class="accent-sky-400 mt-0.5" />
+            <div class="flex-1">
+              <div class="font-bold text-white">3. Evict Local Cloud Downloads via <code>brctl</code> (${cloudItems.length} item(s) — ${fmtBytes(cloudBytes)})</div>
+              <div class="text-[11px] text-slate-400">Reclaims local SSD cache on macOS while keeping files in iCloud/Google Drive.</div>
+            </div>
+          </label>
+          <label class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start gap-2.5 cursor-pointer">
+            <input type="checkbox" id="opt-chk-dups" ${d.duplicate_extras.length ? 'checked' : ''} class="accent-rose-400 mt-0.5" />
+            <div class="flex-1">
+              <div class="font-bold text-white">4. Delete Redundant Exact SHA-256 Duplicate Copies (${d.duplicate_extras.length} file(s) — ${fmtBytes(d.duplicate_extras_bytes)})</div>
+              <div class="text-[11px] text-slate-400">Keeps the first copy in every duplicate group; deletes only exact redundant copies.</div>
+            </div>
+          </label>
+          <label class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start gap-2.5 cursor-pointer">
+            <input type="checkbox" id="opt-chk-vault" class="accent-cyan-400 mt-0.5" />
+            <div class="flex-1">
+              <div class="font-bold text-white">5. Copy Top ${localItems.length} Local Large File(s) to Active Cloud Vault (${fmtBytes(localBytes)})</div>
+              <div class="text-[11px] text-slate-400">Originals remain safely on disk; creates SHA-256 verified copies + <code>.cloudstub</code> receipts.</div>
+            </div>
+          </label>
+        `;
+      } catch (e) {
+        body.innerHTML = `<div class="text-rose-300">Auto-optimize error: ${escHtml(e.message)}</div>`;
+      }
+    }
+
+    async function executeAutoOptimize() {
+      if (!_autoOptPlan) return;
+      const plan = _autoOptPlan;
+      const doCaches = Boolean(document.getElementById('opt-chk-caches')?.checked);
+      const doSubTargets = Boolean(document.getElementById('opt-chk-subtargets')?.checked);
+      const doEvict = Boolean(document.getElementById('opt-chk-evict')?.checked);
+      const doDups = Boolean(document.getElementById('opt-chk-dups')?.checked);
+      const doVault = Boolean(document.getElementById('opt-chk-vault')?.checked);
+      closeAutoOptimizeModal();
+
+      beginWork('1-Click Auto-Optimize', 'Running allocated cleanup, cloud eviction, and vault steps...');
+      let totalFreed = 0;
+      let totalCopied = 0;
+      let opsOk = 0;
+      const errors = [];
+      let firstTel = null;
+      let lastTel = null;
+
+      try {
+        if (doCaches) {
+          for (const c of (plan.safe_caches || [])) {
+            const r = await fetch(`${API_BASE}/api/clean-cache`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ cache_id: c.id })
+            });
+            const d = await r.json();
+            if (d.ok) {
+              if (!firstTel) firstTel = d.telemetry_before;
+              lastTel = d.telemetry_after;
+              totalFreed += (d.freed_bytes || 0);
+              opsOk += 1;
+            } else errors.push(`${c.name}: ${d.error}`);
+          }
+        }
+        if (doSubTargets) {
+          for (const t of (plan.sub_targets || [])) {
+            const r = await fetch(`${API_BASE}/api/clean-project-target`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ path: t.path })
+            });
+            const d = await r.json();
+            if (d.ok) {
+              if (!firstTel) firstTel = d.telemetry_before;
+              lastTel = d.telemetry_after;
+              totalFreed += (d.freed_bytes || 0);
+              opsOk += 1;
+            } else errors.push(`${t.name}: ${d.error}`);
+          }
+        }
+        if (doEvict) {
+          for (const c of (plan.cloudItems || [])) {
+            const r = await fetch(`${API_BASE}/api/evict-cloud-download`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ path: c.path })
+            });
+            const d = await r.json();
+            if (d.ok) {
+              if (!firstTel) firstTel = d.telemetry_before;
+              lastTel = d.telemetry_after;
+              totalFreed += (d.disk_free_delta_bytes || 0);
+              opsOk += 1;
+            } else errors.push(`${c.name}: ${d.error}`);
+          }
+        }
+        if (doDups) {
+          for (const dup of (plan.duplicate_extras || [])) {
+            const r = await fetch(`${API_BASE}/api/delete-local-path`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ path: dup.path, confirm_delete: true })
+            });
+            const d = await r.json();
+            if (d.ok) {
+              if (!firstTel) firstTel = d.telemetry_before;
+              lastTel = d.telemetry_after;
+              totalFreed += (d.freed_bytes || 0);
+              opsOk += 1;
+            } else errors.push(`${dup.path}: ${d.error}`);
+          }
+        }
+        if (doVault) {
+          const leaveStub = Boolean(document.getElementById('leave-stub-checkbox')?.checked);
+          for (const item of (plan.localItems || [])) {
+            const r = await fetch(`${API_BASE}/api/offload`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                file_path: item.path,
+                provider_id: state.selectedProviderId,
+                leave_stub: leaveStub,
+                dry_run: false
+              })
+            });
+            const d = await r.json();
+            if (d.ok) {
+              totalCopied += (d.size_bytes || 0);
+              opsOk += 1;
+            } else errors.push(`${item.name}: ${d.error}`);
+          }
+        }
+
+        state.sessionReclaimedBytes += totalFreed;
+        state.sessionCopiedBytes += totalCopied;
+        const msg = `Auto-Optimize completed ${opsOk} step(s): freed ${fmtBytes(totalFreed)}${totalCopied > 0 ? `, copied ${fmtBytes(totalCopied)} to vault` : ''}`;
+        showToast(`✓ ${msg}`, opsOk === 0 && errors.length > 0);
+        recordActivity('Auto-Optimize', opsOk > 0 || errors.length === 0, msg, {
+          telemetryBefore: firstTel,
+          telemetryAfter: lastTel,
+          freedBytes: totalFreed,
+          partialErrors: errors
+        });
+        await refreshLiveScan(false);
+      } catch (e) {
+        showToast(`Auto-Optimize error: ${e.message}`, true);
+        recordActivity('Auto-Optimize', false, e.message);
       } finally {
         endWork();
       }
