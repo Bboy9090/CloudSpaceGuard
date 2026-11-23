@@ -22,7 +22,7 @@ assert.match(html, /id="opt-chk-vault" class=/, 'Vault copies must require opt-i
 
 const planner = inFunction('async function oneClickAutoOptimize()', 'async function executeAutoOptimize()');
 assert.match(planner, /const estFree = \(d.safe_caches_bytes \|\| 0\);/, 'Default estimate is only selected safe caches');
-const runner = inFunction('async function executeAutoOptimize()', 'async function ');
+const runner = inFunction('async function executeAutoOptimize()', 'state.sessionReclaimedBytes += totalFreed;');
 assert.doesNotMatch(runner, /\/api\/delete-local-path/, 'Automatic executor must not call duplicate deletion');
 assert.match(runner, /doEvict && !window\.confirm/, 'Cloud evictions require extra explicit confirmation');
 assert.match(runner, /\/api\/clean-cache/, 'Safe cleanup remains functional');
