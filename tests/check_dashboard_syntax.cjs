@@ -6,3 +6,5 @@ const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)]
 if (scripts.length === 0) throw new Error('No inline dashboard scripts found');
 scripts.forEach((match, index) => new vm.Script(match[1], { filename: `dashboard-inline-${index}.js` }));
 console.log(`Parsed ${scripts.length} inline dashboard scripts`);
+// Keep the non-destructive auto-optimization policy in the dashboard CI gate.
+require('./check_auto_optimize_policy.cjs');

@@ -269,7 +269,7 @@
         <button onclick="closeAutoOptimizeModal()" class="text-slate-400 hover:text-white">✕</button>
       </div>
       <p class="text-xs text-slate-300">
-        CloudSpaceGuard automatically allocated your safe caches, build artifacts, cloud-synced downloads, and duplicates below. Review and click <strong>Execute Auto-Optimize Now</strong> to run everything in one pass.
+        CloudSpaceGuard has prepared cleanup candidates. Only allowlisted caches are preselected. Build outputs, cloud eviction, and duplicate removal require separate review. Click <strong>Execute Auto-Optimize Now</strong> to run everything in one pass.
       </p>
       <div id="auto-optimize-body" class="space-y-2.5 max-h-80 overflow-y-auto text-xs text-slate-300">
         <div class="text-slate-400">Analyzing disk, caches, cloud mounts, and duplicates...</div>
@@ -279,7 +279,7 @@
         <div class="flex gap-2">
           <button onclick="closeAutoOptimizeModal()" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold">Cancel</button>
           <button onclick="executeAutoOptimize()" id="btn-auto-opt-go" class="hidden px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold">
-            🚀 Execute Auto-Optimize Now
+            Run Selected Cleanup Steps
           </button>
         </div>
       </div>
@@ -985,32 +985,7 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
     </div>
   </div>
 
-  <!-- Modal: 1-Click Auto-Optimize & Free Space -->
-  <div id="auto-optimize-modal" class="hidden fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
-    <div class="glass rounded-2xl max-w-2xl w-full p-6 space-y-4 border border-emerald-500/40">
-      <div class="flex items-center justify-between">
-        <h3 class="text-base font-bold text-white">🚀 1-Click Auto-Optimize &amp; Free Space</h3>
-        <button onclick="closeAutoOptimizeModal()" class="text-slate-400 hover:text-white">✕</button>
-      </div>
-      <p class="text-xs text-slate-300">
-        CloudSpaceGuard automatically allocated your safe caches, build artifacts, cloud-synced downloads, and duplicates below. Review and click <strong>Execute Auto-Optimize Now</strong> to run everything in one pass.
-      </p>
-      <div id="auto-optimize-body" class="space-y-2.5 max-h-80 overflow-y-auto text-xs text-slate-300">
-        <div class="text-slate-400">Analyzing disk, caches, cloud mounts, and duplicates...</div>
-      </div>
-      <div class="flex justify-between items-center pt-2 border-t border-slate-800">
-        <div class="text-xs text-slate-300" id="auto-optimize-summary">Calculating...</div>
-        <div class="flex gap-2">
-          <button onclick="closeAutoOptimizeModal()" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold">Cancel</button>
-          <button onclick="executeAutoOptimize()" id="btn-auto-opt-go" class="hidden px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold">
-            🚀 Execute Auto-Optimize Now
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <script>
+    <script>
     const API_BASE = window.location.protocol === 'file:' ? 'http://127.0.0.1:7474' : '';
     let state = {
       osProfile: 'macos',
@@ -2879,8 +2854,8 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
         const localBytes = localItems.reduce((a, c) => a + (c.size_bytes || 0), 0);
         _autoOptPlan = { ...d, cloudItems, cloudBytes, localItems, localBytes };
 
-        const estFree = (d.safe_caches_bytes || 0) + (d.sub_targets_bytes || 0) + cloudBytes + (d.duplicate_extras_bytes || 0);
-        sumEl.innerHTML = `Estimated space freed: <strong class="text-emerald-300">${fmtBytes(estFree)}</strong>`;
+        const estFree = (d.safe_caches_bytes || 0);
+        sumEl.innerHTML = `Estimated safe cache cleanup (other steps optional): <strong class="text-emerald-300">${fmtBytes(estFree)}</strong>`;
         goBtn.classList.remove('hidden');
 
         body.innerHTML = `
@@ -2892,24 +2867,24 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
             </div>
           </label>
           <label class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start gap-2.5 cursor-pointer">
-            <input type="checkbox" id="opt-chk-subtargets" checked class="accent-emerald-400 mt-0.5" />
+            <input type="checkbox" id="opt-chk-subtargets" class="accent-emerald-400 mt-0.5" />
             <div class="flex-1">
               <div class="font-bold text-white">2. Clean Build &amp; Xcode Sub-Targets (${d.sub_targets.length} folder(s) — ${fmtBytes(d.sub_targets_bytes)})</div>
               <div class="text-[11px] text-slate-400 font-mono truncate">${escHtml(d.sub_targets.map(t => `${t.project}/${t.name}`).join(', ') || 'None')}</div>
             </div>
           </label>
           <label class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start gap-2.5 cursor-pointer">
-            <input type="checkbox" id="opt-chk-evict" ${cloudItems.length ? 'checked' : ''} class="accent-sky-400 mt-0.5" />
+            <input type="checkbox" id="opt-chk-evict" class="accent-sky-400 mt-0.5" />
             <div class="flex-1">
               <div class="font-bold text-white">3. Evict Local Cloud Downloads via <code>brctl</code> (${cloudItems.length} item(s) — ${fmtBytes(cloudBytes)})</div>
               <div class="text-[11px] text-slate-400">Reclaims local SSD cache on macOS while keeping files in iCloud/Google Drive.</div>
             </div>
           </label>
           <label class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start gap-2.5 cursor-pointer">
-            <input type="checkbox" id="opt-chk-dups" ${d.duplicate_extras.length ? 'checked' : ''} class="accent-rose-400 mt-0.5" />
+            <input type="checkbox" id="opt-chk-dups" disabled class="accent-rose-400 mt-0.5" />
             <div class="flex-1">
-              <div class="font-bold text-white">4. Delete Redundant Exact SHA-256 Duplicate Copies (${d.duplicate_extras.length} file(s) — ${fmtBytes(d.duplicate_extras_bytes)})</div>
-              <div class="text-[11px] text-slate-400">Keeps the first copy in every duplicate group; deletes only exact redundant copies.</div>
+              <div class="font-bold text-white">4. Review Exact SHA-256 Duplicates (Manual Only) (${d.duplicate_extras.length} file(s) — ${fmtBytes(d.duplicate_extras_bytes)})</div>
+              <div class="text-[11px] text-slate-400">Bulk deletion is disabled. Review duplicate copies individually before deciding whether any should be removed.</div>
             </div>
           </label>
           <label class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start gap-2.5 cursor-pointer">
@@ -2931,8 +2906,11 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       const doCaches = Boolean(document.getElementById('opt-chk-caches')?.checked);
       const doSubTargets = Boolean(document.getElementById('opt-chk-subtargets')?.checked);
       const doEvict = Boolean(document.getElementById('opt-chk-evict')?.checked);
-      const doDups = Boolean(document.getElementById('opt-chk-dups')?.checked);
+      // Duplicate files are never bulk-deleted by this workflow.
+      // SHA-256 identity alone does not prove recoverability or dispensability.
+      // No automatic duplicate deletion.
       const doVault = Boolean(document.getElementById('opt-chk-vault')?.checked);
+      if (doEvict && !window.confirm('Cloud eviction can make files unavailable offline. Verify that every selected file is fully synced and recoverable before continuing. Proceed with cloud eviction?')) return;
       closeAutoOptimizeModal();
 
       beginWork('1-Click Auto-Optimize', 'Running allocated cleanup, cloud eviction, and vault steps...');
@@ -2987,21 +2965,6 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
               totalFreed += (d.disk_free_delta_bytes || 0);
               opsOk += 1;
             } else errors.push(`${c.name}: ${d.error}`);
-          }
-        }
-        if (doDups) {
-          for (const dup of (plan.duplicate_extras || [])) {
-            const r = await fetch(`${API_BASE}/api/delete-local-path`, {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ path: dup.path, confirm_delete: true })
-            });
-            const d = await r.json();
-            if (d.ok) {
-              if (!firstTel) firstTel = d.telemetry_before;
-              lastTel = d.telemetry_after;
-              totalFreed += (d.freed_bytes || 0);
-              opsOk += 1;
-            } else errors.push(`${dup.path}: ${d.error}`);
           }
         }
         if (doVault) {
