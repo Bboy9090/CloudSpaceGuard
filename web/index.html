@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cloud Space Guard — Cross-Platform Multi-Cloud Offload &amp; Space Saver</title>
+  <title>Cloud Space Guard — Verified Local Vault Copy &amp; Cache Audit</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -159,13 +159,31 @@
     .z-30 { z-index: 30; }
     .z-50 { z-index: 50; }
     .accent-cyan-400 { accent-color: #22d3ee; }
+    .max-h-40 { max-height: 10rem; }
+    .max-h-64 { max-height: 16rem; }
+    .bg-amber-500\/15 { background-color: rgba(245, 158, 11, 0.16); }
+    .bg-cyan-600 { background-color: #0891b2; }
+    .border-cyan-500\/30 { border-color: rgba(6, 182, 212, 0.3); }
+    .text-rose-300 { color: #fda4af; }
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid rgba(255, 255, 255, 0.25);
+      border-top-color: #22d3ee;
+      border-radius: 9999px;
+      animation: csgSpin 0.75s linear infinite;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+    @keyframes csgSpin { to { transform: rotate(360deg); } }
     button { cursor: pointer; border: none; background: transparent; color: inherit; font: inherit; }
     button:hover { opacity: 0.94; }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
     table { width: 100%; border-collapse: collapse; }
     tr { border-bottom: 1px solid rgba(30, 41, 59, 0.7); }
     input[type="text"], select { color: #fff; background: #0f172a; border: 1px solid #334155; padding: 0.5rem 0.75rem; border-radius: 0.5rem; width: 100%; }
     @media (min-width: 768px) {
       .md\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .md\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     }
     @media (min-width: 1024px) {
       .lg\:grid-cols-12 { grid-template-columns: repeat(12, minmax(0, 1fr)); }
@@ -227,6 +245,47 @@
     <div class="splash-bar-track"><div class="splash-bar-fill"></div></div>
   </div>
 
+  <!-- Modal: Smart Cleanup Plan -->
+  <div id="smart-plan-modal" class="hidden fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+    <div class="glass rounded-2xl max-w-2xl w-full p-6 space-y-4 border border-cyan-500/40">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-white">✨ Smart "Hit Target Free Space" Cleanup Plan</h3>
+        <button onclick="closeSmartPlanModal()" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+      <div id="smart-plan-body" class="space-y-3 text-xs text-slate-300">
+        <div>Calculating prioritized safe cleanup plan...</div>
+      </div>
+      <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
+        <button onclick="closeSmartPlanModal()" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: 1-Click Auto-Optimize & Free Space -->
+  <div id="auto-optimize-modal" class="hidden fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+    <div class="glass rounded-2xl max-w-2xl w-full p-6 space-y-4 border border-emerald-500/40">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-white">🚀 1-Click Auto-Optimize &amp; Free Space</h3>
+        <button onclick="closeAutoOptimizeModal()" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+      <p class="text-xs text-slate-300">
+        CloudSpaceGuard automatically allocated your safe caches, build artifacts, cloud-synced downloads, and duplicates below. Review and click <strong>Execute Auto-Optimize Now</strong> to run everything in one pass.
+      </p>
+      <div id="auto-optimize-body" class="space-y-2.5 max-h-80 overflow-y-auto text-xs text-slate-300">
+        <div class="text-slate-400">Analyzing disk, caches, cloud mounts, and duplicates...</div>
+      </div>
+      <div class="flex justify-between items-center pt-2 border-t border-slate-800">
+        <div class="text-xs text-slate-300" id="auto-optimize-summary">Calculating...</div>
+        <div class="flex gap-2">
+          <button onclick="closeAutoOptimizeModal()" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold">Cancel</button>
+          <button onclick="executeAutoOptimize()" id="btn-auto-opt-go" class="hidden px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold">
+            🚀 Execute Auto-Optimize Now
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     window.dismissAppSplash = function () {
       const el = document.getElementById("app-splash-overlay");
@@ -251,7 +310,7 @@
             </span>
           </div>
           <p class="text-xs text-slate-400">
-            All-For-One Space Saver &amp; Cryptographic Multi-Cloud Offloader • Verify SHA-256 Before Delete
+            Verified Local Vault Copies (Originals Retained) &amp; Selective Cache Audit
           </p>
         </div>
       </div>
@@ -279,27 +338,38 @@
                 Reclaim Space Safely for Bootcamp, VMs &amp; Heavy Builds
               </h2>
             </div>
-            <button onclick="refreshLiveScan()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-cyan-300 border border-slate-700 transition flex items-center gap-1.5">
+            <button onclick="refreshLiveScan(true)" id="btn-rescan" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-cyan-300 border border-slate-700 transition flex items-center gap-1.5">
               <span>↻</span> Re-Scan Disk Now
             </button>
           </div>
 
-          <!-- Progress Gauge -->
+          <!-- Progress Gauge & DaisyDisk-Style Storage Breakdown -->
           <div class="space-y-2">
             <div class="flex justify-between text-sm">
-              <span class="text-slate-300">Current Free Space: <strong class="text-white text-base" id="free-gb-label">-- GB</strong> <span class="text-slate-400 text-xs" id="total-gb-label">(of -- GB total)</span></span>
+              <span class="text-slate-300">Current Free Space: <strong class="text-white text-base" id="free-gb-label">-- GB</strong> <span class="text-slate-400 text-xs" id="total-gb-label">(scanning live disk...)</span></span>
               <span class="text-cyan-300 font-semibold">Target Goal: <strong id="target-gb-label">74.0 GB Free</strong></span>
             </div>
-            <div class="w-full h-4 bg-slate-900 rounded-full overflow-hidden border border-slate-800 relative">
-              <div id="free-space-bar" class="h-full progress-bar-shine transition-all duration-500" style="width: 15%"></div>
+            <div class="w-full h-4 bg-slate-900 rounded-full overflow-hidden border border-slate-800 relative flex" title="Storage breakdown: Used / Safe Caches / Review Caches / Free">
+              <div id="seg-used-other" class="h-full transition-all duration-500" style="width: 0%; background: #334155;"></div>
+              <div id="seg-safe-caches" class="h-full transition-all duration-500" style="width: 0%; background: #10b981;"></div>
+              <div id="seg-review-caches" class="h-full transition-all duration-500" style="width: 0%; background: #f59e0b;"></div>
+              <div id="free-space-bar" class="h-full progress-bar-shine transition-all duration-500" style="width: 0%;"></div>
+            </div>
+            <div class="flex flex-wrap justify-between items-center text-[11px] text-slate-400 gap-2 pt-0.5">
+              <div class="flex flex-wrap items-center gap-3">
+                <span><strong style="color:#94a3b8;">■</strong> Used: <span id="legend-used">--</span></span>
+                <span><strong style="color:#10b981;">■</strong> Verified Safe Caches: <span id="legend-safe-cache">--</span></span>
+                <span><strong style="color:#f59e0b;">■</strong> Review Caches: <span id="legend-review-cache">--</span></span>
+                <span><strong style="color:#22d3ee;">■</strong> Free Balance: <span id="legend-free">--</span></span>
+              </div>
             </div>
             <div class="flex justify-between items-center text-xs text-slate-400 pt-1">
-              <span id="deficit-status-text">Calculating space deficit...</span>
-              <span id="projected-gain-text" class="text-emerald-400 font-semibold">Selected Reclaimable: +0.0 GB</span>
+              <span id="deficit-status-text">Measuring live disk balance...</span>
+              <span id="projected-gain-text" class="text-emerald-400 font-semibold">Selected copies: 0.0 GB (originals retained)</span>
             </div>
           </div>
 
-          <!-- Preset Target Pills & 1-Click Smart Clean -->
+          <!-- Preset Target Pills -->
           <div class="flex flex-wrap items-center gap-2 pt-1">
             <span class="text-xs text-slate-400 mr-1">Quick Goal:</span>
             <button onclick="setTargetPreset(50)" class="preset-pill px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 border border-slate-700 transition">50 GB Free</button>
@@ -307,14 +377,14 @@
             <button onclick="setTargetPreset(100)" class="preset-pill px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 border border-slate-700 transition">100 GB Free</button>
           </div>
 
-          <!-- Slider + 1-Click Actions -->
+          <!-- Slider + Verified Actions -->
           <div class="pt-2 flex flex-wrap items-center gap-4">
             <div class="flex-1 min-w-[220px]">
               <label class="text-xs text-slate-400 block mb-1">Adjust Target Free Space (GB): <span id="slider-val-display" class="text-white font-bold">74 GB</span></label>
               <input type="range" id="target-slider" min="15" max="200" step="1" value="74" oninput="onTargetSliderChange(this.value)" class="w-full accent-cyan-400 cursor-pointer" />
             </div>
-            <button onclick="cleanAllSafeCaches()" id="btn-1click-clean" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-500/25 transition flex items-center gap-2">
-              <span>✨</span> 1-Click Smart Clean All Safe Caches
+            <button onclick="openSafeCleanModal(true)" id="btn-1click-clean" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-500/25 transition flex items-center gap-2">
+              <span>🧹</span> Preview &amp; Clean Safe Caches...
             </button>
             <button onclick="autoSelectForTarget()" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-semibold text-xs shadow-lg shadow-cyan-500/20 transition">
               ⚡ Auto-Select For Target
@@ -337,20 +407,74 @@
       </div>
     </section>
 
+    <!-- Disk Pressure Watchdog Alert (shown automatically when free space < 10 GB) -->
+    <div id="disk-pressure-alert" class="hidden rounded-2xl p-4 bg-rose-500/15 border border-rose-500/40 flex flex-wrap items-center justify-between gap-3">
+      <div class="text-xs text-rose-200">
+        <strong>⚠ Low Disk Space Watchdog:</strong> Only <strong id="watchdog-free-gb">-- GB</strong> free on your primary volume. Run <strong>Smart Cleanup Plan</strong> or <strong>Clean All Safe Caches</strong> to reclaim space immediately.
+      </div>
+      <button onclick="openSmartPlanModal()" class="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shrink-0">
+        ✨ Open Smart Cleanup Plan
+      </button>
+    </div>
+
+    <!-- 1-Click Easy Workflows Bar -->
+    <section id="easy-workflows-bar" class="glass rounded-2xl p-4 border border-cyan-500/30 space-y-2.5">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div class="text-xs font-bold uppercase tracking-wider text-cyan-300">
+          ⚡ 1-Click Easy Workflows
+        </div>
+        <div class="text-[11px] text-slate-400">
+          All destructive actions preview exact paths &amp; sizes first; originals are never auto-deleted by local sync copies.
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <button onclick="oneClickAutoOptimize()" class="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 via-cyan-500 to-blue-600 hover:from-emerald-400 hover:to-blue-500 text-slate-950 text-xs font-extrabold shadow-lg shadow-cyan-500/25">
+          🚀 1-Click Auto-Optimize &amp; Free Space
+        </button>
+        <button onclick="openSmartPlanModal()" class="px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 text-xs font-bold shadow">
+          ✨ Smart Cleanup Plan
+        </button>
+        <button onclick="oneClickSelectAllCandidates()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold border border-slate-700">
+          ☑ Select All Large Files
+        </button>
+        <button onclick="oneClickStoreAllVault()" class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold">
+          🛡️ Store All in Local Vault
+        </button>
+        <button onclick="oneClickStoreAllRemote()" class="px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold">
+          ☁️ Store All in Remote Cloud (rclone)
+        </button>
+        <button onclick="oneClickDeleteAllCandidates()" class="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold">
+          🗑️ Delete All Selected / Large Files...
+        </button>
+        <button onclick="oneClickCleanAllSafeCaches()" class="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-emerald-600 text-amber-200 hover:text-white border border-amber-500/40 text-xs font-bold">
+          🧹 Clean All Safe Caches...
+        </button>
+        <button onclick="oneClickCleanAllSubTargets()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-emerald-600 text-slate-200 hover:text-white border border-slate-700 text-xs font-semibold">
+          🛠️ Clean All Build &amp; Xcode Sub-Targets...
+        </button>
+        <button onclick="oneClickDeduplicate()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-600 text-slate-200 hover:text-white border border-slate-700 text-xs font-semibold">
+          🔍 Scan &amp; Delete All Exact Duplicates...
+        </button>
+      </div>
+    </section>
+
     <!-- Navigation Tabs -->
     <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-3">
       <div class="flex flex-wrap gap-2">
         <button onclick="switchTab('offload')" id="tab-btn-offload" class="tab-btn px-4 py-2 rounded-xl text-sm font-semibold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
-          1. Verify-Before-Delete Cloud Offload Queue
+          1. Local Vault Copy Queue
         </button>
         <button onclick="switchTab('caches')" id="tab-btn-caches" class="tab-btn px-4 py-2 rounded-xl text-sm font-semibold bg-slate-900 text-slate-300 border border-slate-800">
-          2. System Cache &amp; Project Build Cleaner
+          2. System Cache &amp; Build Cleaner
+        </button>
+        <button onclick="switchTab('explorer')" id="tab-btn-explorer" class="tab-btn px-4 py-2 rounded-xl text-sm font-semibold bg-slate-900 text-slate-300 border border-slate-800">
+          3. Storage Explorer &amp; Duplicates
         </button>
         <button onclick="switchTab('ledger')" id="tab-btn-ledger" class="tab-btn px-4 py-2 rounded-xl text-sm font-semibold bg-slate-900 text-slate-300 border border-slate-800">
-          3. Verified Cloud Stubs &amp; 1-Click Restore
+          4. Copy Receipts &amp; Restore
         </button>
         <button onclick="switchTab('cli')" id="tab-btn-cli" class="tab-btn px-4 py-2 rounded-xl text-sm font-semibold bg-slate-900 text-slate-300 border border-slate-800">
-          4. Cross-Platform CLI &amp; OS Commands
+          5. CLI &amp; Rclone Remote
         </button>
       </div>
 
@@ -365,21 +489,95 @@
     <!-- Notification Banner -->
     <div id="toast-banner" class="hidden rounded-xl p-4 border text-sm font-medium"></div>
 
+    <!-- Live Operations & Results Panel (Always Honest, Real-Time Work & Balance Delta) -->
+    <section id="live-work-panel" class="glass rounded-2xl p-5 space-y-4 border border-slate-800">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <span class="text-xs uppercase tracking-wider text-cyan-400 font-bold">Live Work &amp; Verified Results</span>
+          <span id="session-totals-badge" class="text-xs px-2.5 py-0.5 rounded-full bg-slate-900 border border-slate-700 text-slate-300">
+            Session: 0 B reclaimed • 0 B copied to vault
+          </span>
+        </div>
+        <button onclick="clearActivityLog()" class="text-xs text-slate-400 hover:text-white">Clear Log</button>
+      </div>
+
+      <!-- Active Running Job Bar -->
+      <div id="active-job-bar" class="hidden rounded-xl p-3.5 bg-cyan-500/15 border border-cyan-500/40 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-3 min-w-0">
+          <span class="spinner"></span>
+          <div class="min-w-0">
+            <div class="text-sm font-bold text-white truncate" id="active-job-title">Working...</div>
+            <div class="text-xs text-cyan-300 font-mono truncate" id="active-job-detail">Preparing operation...</div>
+          </div>
+        </div>
+        <span class="text-xs font-mono text-cyan-300 shrink-0" id="active-job-elapsed">0.0s</span>
+      </div>
+
+      <!-- Last Operation Receipt Card -->
+      <div id="last-receipt-card" class="hidden rounded-xl p-4 bg-slate-950/80 border border-slate-800 space-y-3">
+        <!-- Populated dynamically with exact before/after balance, deleted items, saved paths, and SHA-256 -->
+      </div>
+
+      <!-- Timestamped Activity Log -->
+      <div id="activity-log-list" class="space-y-1.5 max-h-40 overflow-y-auto pr-1 text-xs">
+        <div class="text-slate-500">No operations run yet in this session. Click any action button to see live progress and exact results.</div>
+      </div>
+
+      <!-- DaisyDisk-Style Collector Tray (Stage items from any tab for batch Hash Check or Vault Copy) -->
+      <div id="collector-tray-bar" class="hidden rounded-xl p-3.5 bg-slate-900/90 border border-cyan-500/30 space-y-2">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="text-xs font-bold text-cyan-300" id="collector-tray-summary">Collector Tray: 0 item(s) staged</div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button onclick="clearCollectorTray()" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300">Clear Tray</button>
+            <button onclick="runCollectorBatch(true)" class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-cyan-300 border border-slate-700">🔍 Hash Check Tray</button>
+            <button onclick="runCollectorBatch(false)" class="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white">🛡️ Copy Tray to Vault</button>
+            <button onclick="openBatchRcloneModal('tray')" class="px-3 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-xs font-bold text-white">☁️ rclone Offload Tray</button>
+            <button onclick="openBatchDeleteModal('tray')" class="px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-xs font-bold text-white">🗑️ Delete Tray</button>
+          </div>
+        </div>
+        <div id="collector-tray-items" class="flex flex-wrap gap-2 text-[11px]"></div>
+      </div>
+    </section>
+
     <!-- TAB 1: Verify-Before-Delete Offload Queue -->
     <section id="tab-panel-offload" class="space-y-4">
       <div class="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h3 class="text-lg font-bold text-white">Large Local Files &amp; Archives Ready for Cloud Offload</h3>
+          <h3 class="text-lg font-bold text-white">Large Local Files &amp; Folders Ready to Copy</h3>
           <p class="text-xs text-slate-400">
-            Every file is hashed with SHA-256 locally, uploaded/verified in your chosen Cloud Vault (Google Drive, iCloud Drive, S3/R2/B2), and only removed locally after the remote checksum matches 100%.
+            Copies are verified in the selected local vault folder. Originals are retained; this does not reclaim space or confirm a remote cloud upload.
           </p>
         </div>
-        <div class="flex items-center gap-2">
-          <button onclick="runBatchOffload(true)" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700">
+        <div class="flex flex-wrap items-center gap-2">
+          <input id="candidate-search" type="text" placeholder="Filter files or folders..." oninput="renderCandidates()" style="width: 190px;" class="text-xs" />
+          <select id="candidate-sort" onchange="renderCandidates()" style="width: 150px;" class="text-xs">
+            <option value="size_desc">Largest First</option>
+            <option value="size_asc">Smallest First</option>
+            <option value="age_desc">Oldest First</option>
+            <option value="name_asc">Name (A–Z)</option>
+          </select>
+          <select id="candidate-age-filter" onchange="renderCandidates()" style="width: 145px;" class="text-xs">
+            <option value="0">All Ages</option>
+            <option value="30">Untouched &gt; 30d</option>
+            <option value="90">Untouched &gt; 90d</option>
+          </select>
+          <button onclick="toggleSelectAllFiles(true)" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold border border-slate-700">
+            Select All
+          </button>
+          <button onclick="toggleSelectAllFiles(false)" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700">
+            Clear
+          </button>
+          <button onclick="runBatchOffload(true)" id="btn-batch-dryrun" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700">
             🔍 Dry-Run Verify Selected
           </button>
-          <button onclick="runBatchOffload(false)" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/20">
-            🛡️ Verify SHA-256 &amp; Offload Selected
+          <button onclick="runBatchOffload(false)" id="btn-batch-copy" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/20">
+            🛡️ Copy Selected to Local Vault
+          </button>
+          <button onclick="openBatchRcloneModal('candidates')" id="btn-batch-rclone" class="px-3.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold">
+            ☁️ Store Selected in Remote (rclone)
+          </button>
+          <button onclick="openBatchDeleteModal('candidates')" id="btn-batch-delete" class="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold">
+            🗑️ Delete Selected
           </button>
         </div>
       </div>
@@ -408,22 +606,124 @@
         <div>
           <h3 class="text-lg font-bold text-white">Reclaimable System, Browser &amp; Developer Caches</h3>
           <p class="text-xs text-slate-400">
-            Clean non-destructive package caches (npm, pnpm, Cargo, Xcode DerivedData, Google caches, Playwright) or review heavy VM/Project build directories.
+            Inspect contents before cleaning. Verified safe caches can be purged individually or via confirmed selection; review targets show exact CLI commands.
           </p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <input id="cache-search" type="text" placeholder="Filter caches..." oninput="renderCaches()" style="width: 170px;" class="text-xs" />
+          <select id="cache-filter" onchange="renderCaches()" style="width: 155px;" class="text-xs">
+            <option value="all">All Detected</option>
+            <option value="safe">Safe to Clean Only</option>
+            <option value="review">Manual Review Only</option>
+          </select>
+          <button onclick="selectAllSafeCaches(true)" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold border border-slate-700">
+            Select All Safe
+          </button>
+          <button onclick="selectAllSafeCaches(false)" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700">
+            Clear
+          </button>
+          <button onclick="openSafeCleanModal(false)" id="btn-clean-selected-caches" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/20">
+            🧹 Preview &amp; Clean Selected (<span id="selected-cache-count">0</span>)
+          </button>
         </div>
       </div>
       <div id="caches-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <!-- Populated by JS -->
       </div>
+
+      <!-- DevCleaner-Style Granular Project Build & Xcode Sub-Target Cleaner -->
+      <div class="glass rounded-2xl p-5 space-y-4 border border-slate-800">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h4 class="text-base font-bold text-white">Granular Project Build &amp; Xcode Sub-Target Cleaner</h4>
+            <p class="text-xs text-slate-400">
+              Select individual <code class="text-cyan-300">target/</code>, <code class="text-cyan-300">node_modules/</code>, or Xcode <code class="text-cyan-300">DerivedData</code> / <code class="text-cyan-300">DeviceSupport</code> folders instead of all-or-nothing purging.
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="selectAllSubTargets(true)" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-cyan-300 border border-slate-700">
+              Select All
+            </button>
+            <button onclick="loadProjectTargets()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-cyan-300 border border-slate-700">
+              ↻ Scan Sub-Targets
+            </button>
+            <button onclick="cleanSelectedProjectTargets()" id="btn-clean-subtargets" class="px-3.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-emerald-600 text-amber-300 hover:text-white border border-amber-500/30 text-xs font-bold">
+              🧹 Clean Selected Sub-Targets (<span id="selected-subtarget-count">0</span>)
+            </button>
+          </div>
+        </div>
+        <div id="project-targets-list" class="space-y-2 max-h-64 overflow-y-auto pr-1 text-xs">
+          <div class="text-slate-400">Click "Scan Sub-Targets" or switch to this tab to list individual project build folders.</div>
+        </div>
+      </div>
     </section>
 
-    <!-- TAB 3: Verified Cloud Stubs & Restore Ledger -->
+    <!-- TAB 3: DaisyDisk / WinDirStat Storage Explorer & WizTree Duplicate Finder -->
+    <section id="tab-panel-explorer" class="hidden space-y-6">
+      <div class="glass rounded-2xl p-5 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 class="text-lg font-bold text-white">Interactive Storage Explorer &amp; File-Type Breakdown</h3>
+            <p class="text-xs text-slate-400">
+              Drill down into folders, inspect proportional size bars &amp; extension categories, and stage items into your Collector Tray.
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <input id="explorer-path-input" type="text" placeholder="Enter folder path (default: Home)" style="width: 260px;" class="text-xs font-mono" />
+            <button onclick="loadExplorer(document.getElementById('explorer-path-input').value)" class="px-3.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold">
+              Explore Folder
+            </button>
+            <button onclick="explorerGoUp()" id="btn-explorer-up" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700">
+              ↑ Up
+            </button>
+          </div>
+        </div>
+
+        <div id="explorer-breakdown" class="flex flex-wrap gap-2 text-xs"></div>
+        <div id="explorer-items-list" class="space-y-2 max-h-64 overflow-y-auto pr-1">
+          <div class="text-xs text-slate-400">Open this tab or click "Explore Folder" to scan directory sizes.</div>
+        </div>
+      </div>
+
+      <!-- WizTree-Style Exact SHA-256 Duplicate Finder -->
+      <div class="glass rounded-2xl p-5 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 class="text-lg font-bold text-white">Exact SHA-256 Duplicate File Finder</h3>
+            <p class="text-xs text-slate-400">
+              Groups files by exact byte size, then verifies identical SHA-256 hashes. Read-only scan; nothing is auto-deleted.
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <input id="dup-root-input" type="text" placeholder="Folder to scan (default: ~/Downloads)" style="width: 240px;" class="text-xs font-mono" />
+            <button onclick="scanDuplicates()" id="btn-scan-dups" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold">
+              🔍 Find Exact Duplicates
+            </button>
+          </div>
+        </div>
+        <div id="duplicates-results" class="space-y-3 text-xs">
+          <div class="text-slate-400">Click "Find Exact Duplicates" to scan a folder for identical files (≥ 1 MB).</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: Verified Cloud Stubs & Restore Ledger -->
     <section id="tab-panel-ledger" class="hidden space-y-4">
-      <div>
-        <h3 class="text-lg font-bold text-white">Cryptographic Verification Ledger &amp; 1-Click Cloud Restore</h3>
-        <p class="text-xs text-slate-400">
-          Complete audit log of every SHA-256 verified cloud offload and cache cleanup. Click Restore on any stubbed file to pull it back from Google Drive, iCloud Drive, or your 3rd-party vault.
-        </p>
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 class="text-lg font-bold text-white">Local Copy Ledger &amp; Restore</h3>
+          <p class="text-xs text-slate-400">
+            Local copy and cache cleanup log. Restore checks the receipt and refuses to overwrite an existing destination. Cloud synchronization is not verified.
+          </p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="exportAuditReport('json')" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-cyan-300 border border-slate-700">
+            ⬇ Export JSON Report
+          </button>
+          <button onclick="exportAuditReport('csv')" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-emerald-300 border border-slate-700">
+            ⬇ Export CSV Ledger
+          </button>
+        </div>
       </div>
       <div class="glass rounded-2xl overflow-hidden">
         <table class="w-full text-left border-collapse">
@@ -457,7 +757,7 @@
             <pre class="text-slate-300 overflow-x-auto"><code># Check disk &amp; cloud mounts for 74 GB Bootcamp goal
 python3 space_guard_agent.py status --target-gb 74
 
-# Verify SHA-256 &amp; offload file to Google Drive
+# Create a verified local vault copy in Google Drive folder (source retained)
 python3 space_guard_agent.py offload \
   --file ~/Downloads/large_archive.zip \
   --provider gdrive
@@ -476,6 +776,36 @@ attrib +U -P "C:\Users\You\OneDrive\large_video.mp4"
 # Universal 3rd-Party Cloud (S3 / R2 / Backblaze B2 via rclone):
 rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
           </div>
+        </div>
+
+        <!-- Rclone Remote Checksum Verification Panel -->
+        <div class="bg-slate-950/90 p-4 rounded-xl border border-slate-800 space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h4 class="text-sm font-bold text-white">Rclone Remote Checksum Upload &amp; Verification</h4>
+              <p class="text-xs text-slate-400" id="rclone-status-text">Checking rclone availability...</p>
+            </div>
+            <button onclick="loadRcloneStatus()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-cyan-300 border border-slate-700">
+              ↻ Refresh rclone
+            </button>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+            <input id="rclone-source-input" type="text" placeholder="Local file or folder path" class="font-mono" />
+            <input id="rclone-remote-input" type="text" placeholder="Remote target (e.g. r2:my-vault/)" class="font-mono" />
+            <div class="flex gap-2">
+              <button onclick="executeRcloneVerify(true)" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold border border-slate-700 flex-1">
+                Dry-Run
+              </button>
+              <button onclick="executeRcloneVerify(false)" class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold flex-1">
+                Copy &amp; Check
+              </button>
+            </div>
+          </div>
+          <label class="flex items-center gap-2 text-xs text-amber-200 cursor-pointer">
+            <input id="rclone-delete-after-verify" type="checkbox" class="accent-rose-400" />
+            <span>Delete local original ONLY after <code>rclone check</code> confirms remote checksum match (ignored during Dry-Run)</span>
+          </label>
+          <pre id="rclone-output-box" class="hidden text-[11px] font-mono text-slate-300 bg-slate-900 p-3 rounded-lg border border-slate-800 overflow-x-auto"></pre>
         </div>
       </div>
     </section>
@@ -516,24 +846,223 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
     </div>
   </div>
 
+  <!-- Modal: Inspect Cache Contents Before Cleaning -->
+  <div id="inspect-cache-modal" class="hidden fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+    <div class="glass rounded-2xl max-w-2xl w-full p-6 space-y-4 border border-slate-700">
+      <div class="flex items-center justify-between gap-2">
+        <div class="min-w-0">
+          <h3 class="text-base font-bold text-white truncate" id="inspect-modal-title">Cache Contents</h3>
+          <div class="text-xs text-slate-400 font-mono truncate" id="inspect-modal-path"></div>
+        </div>
+        <button onclick="closeInspectModal()" class="text-slate-400 hover:text-white shrink-0">✕</button>
+      </div>
+      <div id="inspect-modal-body" class="max-h-64 overflow-y-auto space-y-1.5 text-xs">
+        <div class="text-slate-400">Scanning directory entries...</div>
+      </div>
+      <div class="flex justify-between items-center pt-2 border-t border-slate-800">
+        <span class="text-xs text-slate-400" id="inspect-modal-summary"></span>
+        <div class="flex gap-2">
+          <button onclick="closeInspectModal()" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold">Close</button>
+          <button id="inspect-modal-clean-btn" class="hidden px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold">🧹 Clean This Safe Cache</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Preview & Confirm Safe Cache Cleanup -->
+  <div id="confirm-clean-modal" class="hidden fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+    <div class="glass rounded-2xl max-w-2xl w-full p-6 space-y-4 border border-slate-700">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-white">Preview &amp; Confirm Safe Cache Cleanup</h3>
+        <button onclick="closeConfirmCleanModal()" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+      <p class="text-xs text-slate-300">
+        Only verified <strong class="text-emerald-300">safe</strong> package/build/browser caches are eligible. Review the exact paths and current sizes that will be deleted:
+      </p>
+      <div id="confirm-clean-list" class="max-h-64 overflow-y-auto space-y-2 text-xs"></div>
+      <div class="flex justify-between items-center pt-2 border-t border-slate-800">
+        <div class="text-xs text-slate-300">
+          Estimated to purge: <strong class="text-cyan-300" id="confirm-clean-total">0 MB</strong>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="closeConfirmCleanModal()" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold">Cancel</button>
+          <button onclick="executeConfirmedCacheClean()" id="btn-confirm-clean-go" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold">
+            🧹 Delete Selected Cache Contents Now
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Confirm Permanent Local Delete -->
+  <div id="confirm-delete-modal" class="hidden fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+    <div class="glass rounded-2xl max-w-xl w-full p-6 space-y-4 border border-rose-500/40">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-rose-200">Confirm Permanent Delete &amp; Reclaim Space</h3>
+        <button onclick="closeConfirmDeleteModal()" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+      <p class="text-xs text-slate-300" id="delete-modal-note">
+        This permanently deletes the selected local file or folder from your disk to reclaim space.
+      </p>
+      <div class="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-1 text-xs">
+        <div class="font-mono text-white break-all" id="delete-modal-path"></div>
+        <div class="text-cyan-300 font-semibold" id="delete-modal-size"></div>
+      </div>
+      <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
+        <button onclick="closeConfirmDeleteModal()" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold">Cancel</button>
+        <button onclick="executeConfirmedLocalDelete()" id="btn-confirm-delete-go" class="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold">
+          🗑️ Delete Permanently &amp; Reclaim Space
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Batch Delete Selected Items -->
+  <div id="confirm-batch-delete-modal" class="hidden fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+    <div class="glass rounded-2xl max-w-2xl w-full p-6 space-y-4 border border-rose-500/40">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-rose-200">Confirm Batch Permanent Delete</h3>
+        <button onclick="closeBatchDeleteModal()" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+      <p class="text-xs text-slate-300" id="batch-delete-note">
+        Review every local file or folder below. Confirmed items will be permanently deleted from disk to reclaim space.
+      </p>
+      <div id="batch-delete-list" class="max-h-64 overflow-y-auto space-y-1.5 text-xs"></div>
+      <div class="flex justify-between items-center pt-2 border-t border-slate-800">
+        <div class="text-xs text-slate-300">
+          Selected items: <strong class="text-cyan-300" id="batch-delete-summary">0</strong>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="closeBatchDeleteModal()" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold">Cancel</button>
+          <button onclick="executeConfirmedBatchDelete()" id="btn-batch-delete-go" class="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold">
+            🗑️ Delete All Listed Items
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Batch Remote Cloud Offload (rclone) -->
+  <div id="batch-rclone-modal" class="hidden fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+    <div class="glass rounded-2xl max-w-2xl w-full p-6 space-y-4 border border-cyan-500/40">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-cyan-200">Batch Store Selected in Remote Cloud (rclone)</h3>
+        <button onclick="closeBatchRcloneModal()" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+      <p class="text-xs text-slate-300">
+        Uploads each selected item with <code class="text-cyan-300">rclone copy --checksum</code> and verifies remote durability with <code class="text-cyan-300">rclone check</code>. Local originals are deleted ONLY if remote checksum verification succeeds AND you check the option below.
+      </p>
+      <div class="space-y-2 text-xs">
+        <label class="block text-slate-300">Remote Target Prefix (e.g. <code>gdrive:CloudSpaceGuard_Vault/</code>)</label>
+        <input id="batch-rclone-remote-input" type="text" placeholder="remote:CloudSpaceGuard_Vault/" class="w-full font-mono" />
+        <label class="flex items-center gap-2 text-amber-200 cursor-pointer pt-1">
+          <input id="batch-rclone-delete-after" type="checkbox" class="accent-rose-400" />
+          <span>Delete each local original ONLY after remote <code>rclone check</code> succeeds</span>
+        </label>
+      </div>
+      <div id="batch-rclone-list" class="max-h-48 overflow-y-auto space-y-1 text-xs font-mono text-slate-300 bg-slate-900/80 p-3 rounded-xl border border-slate-800"></div>
+      <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
+        <button onclick="closeBatchRcloneModal()" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold">Cancel</button>
+        <button onclick="executeBatchRclone(true)" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700">Dry-Run Batch</button>
+        <button onclick="executeBatchRclone(false)" class="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold">☁️ Upload &amp; Verify All</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Smart Cleanup Plan -->
+  <div id="smart-plan-modal" class="hidden fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+    <div class="glass rounded-2xl max-w-2xl w-full p-6 space-y-4 border border-cyan-500/40">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-white">✨ Smart "Hit Target Free Space" Cleanup Plan</h3>
+        <button onclick="closeSmartPlanModal()" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+      <div id="smart-plan-body" class="space-y-3 text-xs text-slate-300">
+        <div>Calculating prioritized safe cleanup plan...</div>
+      </div>
+      <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
+        <button onclick="closeSmartPlanModal()" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: 1-Click Auto-Optimize & Free Space -->
+  <div id="auto-optimize-modal" class="hidden fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+    <div class="glass rounded-2xl max-w-2xl w-full p-6 space-y-4 border border-emerald-500/40">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-white">🚀 1-Click Auto-Optimize &amp; Free Space</h3>
+        <button onclick="closeAutoOptimizeModal()" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+      <p class="text-xs text-slate-300">
+        CloudSpaceGuard automatically allocated your safe caches, build artifacts, cloud-synced downloads, and duplicates below. Review and click <strong>Execute Auto-Optimize Now</strong> to run everything in one pass.
+      </p>
+      <div id="auto-optimize-body" class="space-y-2.5 max-h-80 overflow-y-auto text-xs text-slate-300">
+        <div class="text-slate-400">Analyzing disk, caches, cloud mounts, and duplicates...</div>
+      </div>
+      <div class="flex justify-between items-center pt-2 border-t border-slate-800">
+        <div class="text-xs text-slate-300" id="auto-optimize-summary">Calculating...</div>
+        <div class="flex gap-2">
+          <button onclick="closeAutoOptimizeModal()" class="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold">Cancel</button>
+          <button onclick="executeAutoOptimize()" id="btn-auto-opt-go" class="hidden px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold">
+            🚀 Execute Auto-Optimize Now
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     const API_BASE = window.location.protocol === 'file:' ? 'http://127.0.0.1:7474' : '';
     let state = {
       osProfile: 'macos',
       selectedProviderId: 'gdrive',
       telemetry: {
-        total_gb: 396.0,
-        free_gb: 5.5,
-        used_gb: 390.5,
+        total_gb: null,
+        free_gb: null,
+        used_gb: null,
+        total_bytes: 0,
+        free_bytes: 0,
+        used_bytes: 0,
         target_free_gb: 74.0,
-        deficit_gb: 68.5
+        deficit_gb: null
       },
       providers: [],
       candidates: [],
       caches: [],
       ledger: [],
-      selectedFiles: new Set()
+      selectedFiles: new Set(),
+      selectedCaches: new Set(),
+      collectorTray: new Set(),
+      explorer: { path: '', parent_path: '', items: [], breakdown: [], total_bytes: 0 },
+      projectTargets: [],
+      selectedSubTargets: new Set(),
+      duplicates: null,
+      activityLog: [],
+      lastReceipt: null,
+      sessionReclaimedBytes: 0,
+      sessionCopiedBytes: 0,
+      busy: false
     };
+
+    let _jobPollTimer = null;
+    let _jobElapsedTimer = null;
+    let _jobStartedAt = 0;
+
+    function escHtml(str) {
+      return String(str ?? '').replace(/[&<>"']/g, s => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[s]);
+    }
+
+    function fmtBytes(bytes) {
+      if (bytes === null || bytes === undefined || Number.isNaN(Number(bytes))) return '—';
+      const n = Number(bytes);
+      const abs = Math.abs(n);
+      const sign = n < 0 ? '-' : '';
+      if (abs >= 1024 ** 3) return `${sign}${(abs / (1024 ** 3)).toFixed(2)} GB`;
+      if (abs >= 1024 ** 2) return `${sign}${(abs / (1024 ** 2)).toFixed(1)} MB`;
+      if (abs >= 1024) return `${sign}${(abs / 1024).toFixed(1)} KB`;
+      return `${sign}${abs} B`;
+    }
 
     function showToast(msg, isError = false) {
       const el = document.getElementById('toast-banner');
@@ -544,7 +1073,162 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       }`;
       el.textContent = msg;
       el.classList.remove('hidden');
-      setTimeout(() => el.classList.add('hidden'), 7000);
+      setTimeout(() => el.classList.add('hidden'), 9000);
+    }
+
+    function beginWork(title, detail) {
+      state.busy = true;
+      _jobStartedAt = Date.now();
+      const bar = document.getElementById('active-job-bar');
+      document.getElementById('active-job-title').textContent = title;
+      document.getElementById('active-job-detail').textContent = detail || 'Working...';
+      document.getElementById('active-job-elapsed').textContent = '0.0s';
+      bar.classList.remove('hidden');
+
+      clearInterval(_jobElapsedTimer);
+      _jobElapsedTimer = setInterval(() => {
+        const secs = ((Date.now() - _jobStartedAt) / 1000).toFixed(1);
+        document.getElementById('active-job-elapsed').textContent = `${secs}s`;
+      }, 100);
+
+      clearInterval(_jobPollTimer);
+      _jobPollTimer = setInterval(async () => {
+        try {
+          const r = await fetch(`${API_BASE}/api/jobs`);
+          if (!r.ok) return;
+          const d = await r.json();
+          const active = (d.jobs || []).find(j => !j.done);
+          if (active) {
+            const countInfo = active.items_total > 0 ? ` (${active.items_done}/${active.items_total})` : '';
+            document.getElementById('active-job-title').textContent = `${active.phase}${countInfo}`;
+            if (active.detail) {
+              document.getElementById('active-job-detail').textContent = active.detail;
+            }
+          }
+        } catch (_) {}
+      }, 350);
+    }
+
+    function endWork() {
+      state.busy = false;
+      clearInterval(_jobPollTimer);
+      clearInterval(_jobElapsedTimer);
+      _jobPollTimer = null;
+      _jobElapsedTimer = null;
+      document.getElementById('active-job-bar').classList.add('hidden');
+    }
+
+    function recordActivity(kind, ok, summary, details = {}) {
+      const ts = new Date().toLocaleTimeString();
+      state.activityLog.unshift({ ts, kind, ok, summary });
+      if (state.activityLog.length > 40) state.activityLog.length = 40;
+      state.lastReceipt = { ts, kind, ok, summary, ...details };
+      renderActivityAndReceipt();
+    }
+
+    function clearActivityLog() {
+      state.activityLog = [];
+      state.lastReceipt = null;
+      renderActivityAndReceipt();
+    }
+
+    function renderActivityAndReceipt() {
+      document.getElementById('session-totals-badge').textContent =
+        `Session: ${fmtBytes(state.sessionReclaimedBytes)} reclaimed • ${fmtBytes(state.sessionCopiedBytes)} copied to vault`;
+
+      const receiptEl = document.getElementById('last-receipt-card');
+      const r = state.lastReceipt;
+      if (!r) {
+        receiptEl.classList.add('hidden');
+      } else {
+        receiptEl.classList.remove('hidden');
+        const badgeCls = r.ok
+          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+          : 'bg-rose-500/15 text-rose-200 border-rose-500/40';
+        let balanceHtml = '';
+        if (r.telemetryBefore && r.telemetryAfter) {
+          const delta = (r.telemetryAfter.free_bytes || 0) - (r.telemetryBefore.free_bytes || 0);
+          const deltaSign = delta > 0 ? '+' : '';
+          balanceHtml = `
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+              <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-800">
+                <div class="text-slate-400">Free Balance Before → After</div>
+                <div class="font-mono font-bold text-white">${r.telemetryBefore.free_gb} GB → ${r.telemetryAfter.free_gb} GB</div>
+              </div>
+              <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-800">
+                <div class="text-slate-400">Actual OS Disk Delta</div>
+                <div class="font-mono font-bold ${delta > 0 ? 'text-emerald-400' : 'text-cyan-300'}">${deltaSign}${fmtBytes(delta)}</div>
+              </div>
+              <div class="p-2.5 rounded-lg bg-slate-900 border border-slate-800">
+                <div class="text-slate-400">Remaining to Target (${r.telemetryAfter.target_free_gb} GB)</div>
+                <div class="font-mono font-bold text-amber-300">${r.telemetryAfter.deficit_gb > 0 ? r.telemetryAfter.deficit_gb + ' GB needed' : '✓ Goal Met'}</div>
+              </div>
+            </div>
+          `;
+        }
+
+        let detailsHtml = '';
+        if (r.deletedItems && r.deletedItems.length) {
+          const rows = r.deletedItems.map(it =>
+            `<div class="flex justify-between font-mono text-[11px] text-slate-300 border-b border-slate-800/60 py-1">
+               <span class="truncate pr-2">- ${escHtml(it.name)}</span>
+               <span class="text-emerald-300 shrink-0">${fmtBytes(it.size_bytes)}</span>
+             </div>`
+          ).join('');
+          detailsHtml += `
+            <div class="space-y-1">
+              <div class="text-xs font-semibold text-emerald-300">Taken Out / Deleted (${r.deletedCount} item(s), ${fmtBytes(r.freedBytes)} measured removed):</div>
+              <div class="max-h-40 overflow-y-auto bg-slate-900/90 rounded-lg p-2.5 border border-slate-800">${rows}</div>
+            </div>
+          `;
+        }
+        if (r.partialErrors && r.partialErrors.length) {
+          detailsHtml += `
+            <div class="text-xs text-amber-300 bg-amber-500/15 border border-amber-500/30 rounded-lg p-2.5">
+              Skipped / Locked (${r.partialErrors.length}): ${escHtml(r.partialErrors.slice(0, 3).join(' | '))}
+            </div>
+          `;
+        }
+        if (r.savedInfo) {
+          detailsHtml += `
+            <div class="text-xs space-y-1 bg-slate-900/90 rounded-lg p-3 border border-slate-800 font-mono">
+              ${r.savedInfo.source ? `<div><span class="text-slate-400">Source:</span> <span class="text-white">${escHtml(r.savedInfo.source)}</span> <span class="text-cyan-300">(${escHtml(r.savedInfo.sourceStatus || 'Retained')})</span></div>` : ''}
+              ${r.savedInfo.dest ? `<div><span class="text-slate-400">Vault / Target:</span> <span class="text-emerald-300">${escHtml(r.savedInfo.dest)}</span></div>` : ''}
+              ${r.savedInfo.sha256 ? `<div><span class="text-slate-400">SHA-256:</span> <span class="text-cyan-300">${escHtml(r.savedInfo.sha256)}</span></div>` : ''}
+              ${r.savedInfo.stub ? `<div><span class="text-slate-400">Receipt:</span> <span class="text-slate-200">${escHtml(r.savedInfo.stub)}</span></div>` : ''}
+              ${r.savedInfo.note ? `<div class="text-slate-400 pt-1">${escHtml(r.savedInfo.note)}</div>` : ''}
+            </div>
+          `;
+        }
+
+        receiptEl.innerHTML = `
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <span class="text-[11px] px-2 py-0.5 rounded border font-semibold ${badgeCls}">${escHtml(r.kind)}</span>
+              <span class="text-sm font-bold text-white">${escHtml(r.summary)}</span>
+            </div>
+            <span class="text-[11px] font-mono text-slate-400">${escHtml(r.ts)}</span>
+          </div>
+          ${balanceHtml}
+          ${detailsHtml}
+        `;
+      }
+
+      const logEl = document.getElementById('activity-log-list');
+      if (!state.activityLog.length) {
+        logEl.innerHTML = `<div class="text-slate-500">No operations run yet in this session. Click any action button to see live progress and exact results.</div>`;
+      } else {
+        logEl.innerHTML = state.activityLog.map(item => `
+          <div class="flex items-center justify-between gap-2 py-1 border-b border-slate-800/60">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="${item.ok ? 'text-emerald-400' : 'text-rose-300'} font-bold">${item.ok ? '✓' : '✕'}</span>
+              <span class="text-slate-400 font-mono shrink-0">[${escHtml(item.ts)}]</span>
+              <span class="text-cyan-300 font-semibold shrink-0">${escHtml(item.kind)}:</span>
+              <span class="text-slate-200 truncate">${escHtml(item.summary)}</span>
+            </div>
+          </div>
+        `).join('');
+      }
     }
 
     function setOsProfile(prof) {
@@ -561,24 +1245,34 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
     }
 
     function switchTab(tab) {
-      ['offload', 'caches', 'ledger', 'cli'].forEach(t => {
-        document.getElementById(`tab-panel-${t}`).classList.toggle('hidden', t !== tab);
+      ['offload', 'caches', 'explorer', 'ledger', 'cli'].forEach(t => {
+        const panel = document.getElementById(`tab-panel-${t}`);
+        if (panel) panel.classList.toggle('hidden', t !== tab);
         const btn = document.getElementById(`tab-btn-${t}`);
+        if (!btn) return;
         if (t === tab) {
           btn.className = 'tab-btn px-4 py-2 rounded-xl text-sm font-semibold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40';
         } else {
           btn.className = 'tab-btn px-4 py-2 rounded-xl text-sm font-semibold bg-slate-900 text-slate-300 border border-slate-800';
         }
       });
+      if (tab === 'caches' && !state.projectTargets.length) loadProjectTargets();
+      if (tab === 'explorer' && !state.explorer.items.length) loadExplorer(state.explorer.path || '');
+      if (tab === 'cli') loadRcloneStatus();
     }
 
-    async function refreshLiveScan() {
-      // 1. Instant Initial Load: Status, Live Telemetry, System Caches, and Ledger
+    async function refreshLiveScan(userInitiated = false) {
+      const refreshParam = userInitiated ? 'refresh=1' : 'refresh=0';
+      const btn = document.getElementById('btn-rescan');
+      if (userInitiated) {
+        if (btn) btn.disabled = true;
+        beginWork('Re-scanning Disk, Caches & Large Files', 'Measuring live disk usage and directory sizes...');
+      }
       try {
         const [statusRes, cacheRes, ledgerRes] = await Promise.all([
-          fetch(API_BASE + '/api/status'),
-          fetch(API_BASE + '/api/caches'),
-          fetch(API_BASE + '/api/ledger')
+          fetch(`${API_BASE}/api/status`),
+          fetch(`${API_BASE}/api/caches?${refreshParam}`),
+          fetch(`${API_BASE}/api/ledger`)
         ]);
         if (statusRes.ok) {
           const statusData = await statusRes.json();
@@ -591,6 +1285,9 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
         if (cacheRes && cacheRes.ok) {
           const cacheData = await cacheRes.json();
           state.caches = cacheData.caches || [];
+          // Prune stale selections
+          const validIds = new Set(state.caches.filter(c => c.safe_level === 'safe').map(c => c.id));
+          state.selectedCaches = new Set(Array.from(state.selectedCaches).filter(id => validIds.has(id)));
         }
         if (ledgerRes && ledgerRes.ok) {
           const ledgerData = await ledgerRes.json();
@@ -602,11 +1299,14 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
         document.getElementById('agent-status-badge').textContent = 'Offline Standalone Mode';
         renderAll();
         if (window.dismissAppSplash) window.dismissAppSplash();
+        if (userInitiated) {
+          recordActivity('Disk Scan', false, `Could not reach local agent: ${e.message}`);
+          showToast(`Could not reach local agent: ${e.message}`, true);
+        }
       }
 
-      // 2. Progressive Load: Offload candidate files in background
       try {
-        const candRes = await fetch(API_BASE + '/api/candidates?min_mb=25');
+        const candRes = await fetch(`${API_BASE}/api/candidates?min_mb=25&${refreshParam}`);
         if (candRes.ok) {
           const candData = await candRes.json();
           state.candidates = candData.candidates || [];
@@ -615,14 +1315,27 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
         }
       } catch (e) {
         console.warn('Candidate load note:', e);
+      } finally {
+        if (userInitiated) {
+          endWork();
+          if (btn) btn.disabled = false;
+          if (state.telemetry.free_gb !== null) {
+            recordActivity(
+              'Disk Scan',
+              true,
+              `Measured ${state.telemetry.free_gb} GB free (${state.caches.length} cache target(s), ${state.candidates.length} large item(s))`
+            );
+          }
+        }
       }
-    }
     }
 
     async function onTargetSliderChange(val) {
       const target = parseFloat(val);
       state.telemetry.target_free_gb = target;
-      state.telemetry.deficit_gb = Math.max(0, +(target - state.telemetry.free_gb).toFixed(2));
+      if (state.telemetry.free_gb !== null) {
+        state.telemetry.deficit_gb = Math.max(0, +(target - state.telemetry.free_gb).toFixed(2));
+      }
       document.getElementById('slider-val-display').textContent = `${target} GB`;
       renderTelemetry();
       try {
@@ -644,12 +1357,14 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       }
       renderCandidates();
       renderTelemetry();
-      showToast(`Auto-selected ${state.selectedFiles.size} largest file(s) for SHA-256 Verified Cloud Offload. Check Tab 2 (System Caches) for additional space!`);
+      const msg = `Selected ${state.selectedFiles.size} item(s) for local vault copies; originals stay on disk.`;
+      showToast(msg);
+      recordActivity('Selection', true, msg);
     }
 
     function toggleSelectAllFiles(checked) {
       if (checked) {
-        state.candidates.forEach(c => state.selectedFiles.add(c.path));
+        getFilteredCandidates().forEach(c => state.selectedFiles.add(c.path));
       } else {
         state.selectedFiles.clear();
       }
@@ -657,11 +1372,14 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       renderTelemetry();
     }
 
-    function toggleFileSelection(path) {
-      if (state.selectedFiles.has(path)) {
-        state.selectedFiles.delete(path);
+    function toggleFileSelection(idx) {
+      const list = getFilteredCandidates();
+      const c = list[idx];
+      if (!c) return;
+      if (state.selectedFiles.has(c.path)) {
+        state.selectedFiles.delete(c.path);
       } else {
-        state.selectedFiles.add(path);
+        state.selectedFiles.add(c.path);
       }
       renderCandidates();
       renderTelemetry();
@@ -669,6 +1387,13 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
 
     function renderTelemetry() {
       const t = state.telemetry;
+      if (t.free_gb === null || t.total_gb === null) {
+        document.getElementById('free-gb-label').textContent = '-- GB';
+        document.getElementById('total-gb-label').textContent = '(measuring live disk...)';
+        document.getElementById('deficit-status-text').textContent = 'Waiting for live telemetry from local agent...';
+        return;
+      }
+
       document.getElementById('free-gb-label').textContent = `${t.free_gb} GB`;
       document.getElementById('total-gb-label').textContent = `(of ${t.total_gb} GB total)`;
       document.getElementById('target-gb-label').textContent = `${t.target_free_gb} GB Free`;
@@ -678,20 +1403,46 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       state.candidates.forEach(c => {
         if (state.selectedFiles.has(c.path)) selectedBytes += c.size_bytes;
       });
-      const selectedGb = +(selectedBytes / (1024 ** 3)).toFixed(2);
-      const totalCacheGb = +(state.caches.reduce((acc, c) => acc + c.size_bytes, 0) / (1024 ** 3)).toFixed(2);
+      const safeCacheBytes = state.caches.filter(c => c.safe_level === 'safe').reduce((a, c) => a + c.size_bytes, 0);
+      const reviewCacheBytes = state.caches.filter(c => c.safe_level !== 'safe').reduce((a, c) => a + c.size_bytes, 0);
+      const totalBytes = Math.max(1, t.total_bytes || (t.total_gb * (1024 ** 3)));
+      const freeBytes = t.free_bytes || (t.free_gb * (1024 ** 3));
+      const usedBytes = Math.max(0, totalBytes - freeBytes);
+      const otherUsedBytes = Math.max(0, usedBytes - safeCacheBytes - reviewCacheBytes);
+
+      const pUsed = Math.max(0, (otherUsedBytes / totalBytes) * 100);
+      const pSafe = Math.max(0, (safeCacheBytes / totalBytes) * 100);
+      const pReview = Math.max(0, (reviewCacheBytes / totalBytes) * 100);
+      const pFree = Math.max(2, (freeBytes / totalBytes) * 100);
+
+      document.getElementById('seg-used-other').style.width = `${pUsed.toFixed(1)}%`;
+      document.getElementById('seg-safe-caches').style.width = `${pSafe.toFixed(1)}%`;
+      document.getElementById('seg-review-caches').style.width = `${pReview.toFixed(1)}%`;
+      document.getElementById('free-space-bar').style.width = `${pFree.toFixed(1)}%`;
+
+      document.getElementById('legend-used').textContent = fmtBytes(otherUsedBytes);
+      document.getElementById('legend-safe-cache').textContent = fmtBytes(safeCacheBytes);
+      document.getElementById('legend-review-cache').textContent = fmtBytes(reviewCacheBytes);
+      document.getElementById('legend-free').textContent = fmtBytes(freeBytes);
 
       document.getElementById('projected-gain-text').textContent =
-        `Selected Offload: +${selectedGb} GB | Reclaimable Caches: +${totalCacheGb} GB`;
-
-      const pct = Math.min(100, Math.max(4, Math.round((t.free_gb / Math.max(1, t.target_free_gb)) * 100)));
-      document.getElementById('free-space-bar').style.width = `${pct}%`;
+        `Selected copies: ${fmtBytes(selectedBytes)} (originals retained) | Safe caches: ${fmtBytes(safeCacheBytes)}`;
 
       const deficitEl = document.getElementById('deficit-status-text');
       if (t.free_gb >= t.target_free_gb) {
         deficitEl.innerHTML = `<span class="text-emerald-400 font-bold">✓ Target Met! You have ${t.free_gb} GB free.</span>`;
       } else {
         deficitEl.innerHTML = `Need <strong class="text-amber-300">${t.deficit_gb} GB more</strong> to reach ${t.target_free_gb} GB goal.`;
+      }
+      const alertEl = document.getElementById('disk-pressure-alert');
+      const alertGbEl = document.getElementById('watchdog-free-gb');
+      if (alertEl && alertGbEl) {
+        if (t.free_gb < 10) {
+          alertGbEl.textContent = `${t.free_gb} GB`;
+          alertEl.classList.remove('hidden');
+        } else {
+          alertEl.classList.add('hidden');
+        }
       }
     }
 
@@ -704,18 +1455,18 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       container.innerHTML = state.providers.map(p => {
         const isSel = p.id === state.selectedProviderId;
         return `
-          <div onclick="state.selectedProviderId='${p.id}'; renderProviders();"
+          <div onclick="state.selectedProviderId='${escHtml(p.id)}'; renderProviders();"
                class="p-2.5 rounded-xl border cursor-pointer transition flex items-center justify-between gap-2 ${
                  isSel ? 'bg-cyan-500/15 border-cyan-400' : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
                }">
             <div class="min-w-0">
               <div class="flex items-center gap-2">
-                <span class="text-xs font-bold text-white truncate">${p.name}</span>
+                <span class="text-xs font-bold text-white truncate">${escHtml(p.name)}</span>
                 <span class="text-[10px] px-1.5 py-0.5 rounded ${
                   p.connected ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'
                 }">${p.connected ? 'Ready' : 'Configurable'}</span>
               </div>
-              <div class="text-[11px] text-slate-400 truncate">${p.account_hint} • ${p.tier}</div>
+              <div class="text-[11px] text-slate-400 truncate">${escHtml(p.account_hint)} • ${escHtml(p.tier)}</div>
             </div>
             <input type="radio" name="active_provider" ${isSel ? 'checked' : ''} class="accent-cyan-400" />
           </div>
@@ -723,44 +1474,71 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       }).join('');
     }
 
+    function getFilteredCandidates() {
+      const q = (document.getElementById('candidate-search')?.value || '').trim().toLowerCase();
+      const sort = document.getElementById('candidate-sort')?.value || 'size_desc';
+      const minAge = parseInt(document.getElementById('candidate-age-filter')?.value || '0', 10) || 0;
+      let list = state.candidates.filter(c =>
+        (!q || c.name.toLowerCase().includes(q) || c.path.toLowerCase().includes(q)) &&
+        ((c.age_days || 0) >= minAge)
+      );
+      list = list.slice();
+      if (sort === 'size_asc') list.sort((a, b) => a.size_bytes - b.size_bytes);
+      else if (sort === 'age_desc') list.sort((a, b) => (b.age_days || 0) - (a.age_days || 0));
+      else if (sort === 'name_asc') list.sort((a, b) => a.name.localeCompare(b.name));
+      else list.sort((a, b) => b.size_bytes - a.size_bytes);
+      return list;
+    }
+
     function renderCandidates() {
       const tbody = document.getElementById('candidates-table-body');
-      if (!state.candidates.length) {
+      const list = getFilteredCandidates();
+      if (!list.length) {
         tbody.innerHTML = `
           <tr>
             <td colspan="5" class="p-8 text-center text-slate-400 text-sm">
-              No standalone files &gt; 15 MB found in standard user folders, or check <strong>Tab 2: System Cache &amp; Project Build Cleaner</strong> where <strong>35+ GB</strong> of reclaimable caches and containers were detected!
+              ${state.candidates.length ? 'No items match your current filter.' : 'No standalone files &gt; 25 MB found in standard user folders. Check <strong>Tab 2: System Cache &amp; Project Build Cleaner</strong> or click <strong>Re-Scan Disk Now</strong>.'}
             </td>
           </tr>
         `;
         return;
       }
-      tbody.innerHTML = state.candidates.map(c => {
+      tbody.innerHTML = list.map((c, idx) => {
         const checked = state.selectedFiles.has(c.path);
-        const safePath = c.path.replace(/'/g, "\\'");
         return `
           <tr class="hover:bg-slate-900/40 transition">
             <td class="p-3.5">
-              <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleFileSelection('${safePath}')" class="accent-cyan-400" />
+              <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleFileSelection(${idx})" class="accent-cyan-400" />
             </td>
             <td class="p-3.5">
-              <div class="font-semibold text-white">${c.name}</div>
-              <div class="text-xs text-slate-400 font-mono truncate max-w-md">${c.path}</div>
+              <div class="font-semibold text-white">${escHtml(c.name)}</div>
+              <div class="text-xs text-slate-400 font-mono truncate max-w-md">${escHtml(c.path)}</div>
+              <div class="text-[11px] text-slate-500 mt-0.5">${c.category ? `${escHtml(c.category)} • ` : ''}Modified ${escHtml(c.modified || '')}${typeof c.age_days === 'number' ? ` (${c.age_days}d ago)` : ''}</div>
             </td>
             <td class="p-3.5 font-mono text-xs text-cyan-300 font-semibold">
-              ${c.size_gb >= 0.1 ? c.size_gb + ' GB' : c.size_mb + ' MB'}
+              ${fmtBytes(c.size_bytes)}
             </td>
             <td class="p-3.5">
               <span class="text-xs px-2.5 py-1 rounded-lg bg-slate-800 text-slate-200 border border-slate-700">
-                ${c.recommended_action}
+                ${escHtml(c.recommended_action)}
               </span>
             </td>
             <td class="p-3.5 text-right space-x-1.5">
-              <button onclick="offloadSingle('${safePath}', true)" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300">
+              ${c.already_in_cloud ? `<button onclick="evictCloudPath(${JSON.stringify(c.path).replace(/"/g, '&quot;')})" class="px-2 py-1 rounded-lg bg-sky-600/80 hover:bg-sky-500 text-xs text-white font-semibold" title="Remove local download via brctl evict (keeps file in cloud)">Evict Local</button>` : ''}
+              <button onclick="addToCollectorByIdx(${idx})" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-cyan-300" title="Stage in Collector Tray">
+                + Stage
+              </button>
+              <button onclick="revealCandidatePath(${idx})" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300" title="Show in file manager">
+                Reveal
+              </button>
+              <button onclick="offloadCandidate(${idx}, true)" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300">
                 Hash Check
               </button>
-              <button onclick="offloadSingle('${safePath}', false)" class="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white">
-                Verify &amp; Offload
+              <button onclick="offloadCandidate(${idx}, false)" class="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white">
+                Copy to Vault
+              </button>
+              <button onclick="confirmDeleteCandidate(${idx})" class="px-2.5 py-1 rounded-lg bg-rose-600/80 hover:bg-rose-500 text-xs font-semibold text-white" title="Delete from local disk to reclaim space">
+                Delete
               </button>
             </td>
           </tr>
@@ -768,44 +1546,82 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       }).join('');
     }
 
+    function toggleCacheSelection(cacheId, checked) {
+      if (checked) state.selectedCaches.add(cacheId);
+      else state.selectedCaches.delete(cacheId);
+      document.getElementById('selected-cache-count').textContent = String(state.selectedCaches.size);
+    }
+
     function renderCaches() {
       const grid = document.getElementById('caches-grid');
-      if (!state.caches.length) {
-        grid.innerHTML = `<div class="text-sm text-slate-400">No large system caches detected.</div>`;
+      const q = (document.getElementById('cache-search')?.value || '').trim().toLowerCase();
+      const filt = document.getElementById('cache-filter')?.value || 'all';
+      document.getElementById('selected-cache-count').textContent = String(state.selectedCaches.size);
+
+      const visible = state.caches.filter(item => {
+        if (filt === 'safe' && item.safe_level !== 'safe') return false;
+        if (filt === 'review' && item.safe_level === 'safe') return false;
+        if (q && !item.name.toLowerCase().includes(q) && !item.path.toLowerCase().includes(q)) return false;
+        return true;
+      });
+
+      if (!visible.length) {
+        grid.innerHTML = `<div class="text-sm text-slate-400">No matching system or developer caches detected.</div>`;
         return;
       }
-      grid.innerHTML = state.caches.map(item => {
+
+      grid.innerHTML = visible.map(item => {
         const isSafe = item.safe_level === 'safe';
+        const isChecked = state.selectedCaches.has(item.id);
         return `
           <div class="glass rounded-2xl p-5 flex flex-col justify-between gap-4 border ${
             isSafe ? 'border-slate-800' : 'border-amber-500/30'
           }">
             <div class="space-y-2">
               <div class="flex items-start justify-between gap-2">
-                <div>
-                  <span class="text-[11px] uppercase tracking-wider font-bold ${
-                    isSafe ? 'text-emerald-400' : 'text-amber-400'
-                  }">${item.category}</span>
-                  <h4 class="text-base font-bold text-white">${item.name}</h4>
+                <div class="flex items-start gap-2.5 min-w-0">
+                  ${isSafe
+                    ? `<input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleCacheSelection('${escHtml(item.id)}', this.checked)" class="accent-cyan-400 mt-1 shrink-0" title="Select for batch cleanup" />`
+                    : ''
+                  }
+                  <div class="min-w-0">
+                    <span class="text-[11px] uppercase tracking-wider font-bold ${
+                      isSafe ? 'text-emerald-400' : 'text-amber-400'
+                    }">${escHtml(item.category)} • ${isSafe ? 'Verified Safe' : 'Manual Review'}</span>
+                    <h4 class="text-base font-bold text-white">${escHtml(item.name)}</h4>
+                  </div>
                 </div>
-                <span class="text-sm font-mono font-black px-3 py-1 rounded-xl bg-slate-900 border border-slate-700 text-cyan-300">
-                  ${item.size_gb >= 0.1 ? item.size_gb + ' GB' : item.size_mb + ' MB'}
+                <span class="text-sm font-mono font-black px-3 py-1 rounded-xl bg-slate-900 border border-slate-700 text-cyan-300 shrink-0">
+                  ${fmtBytes(item.size_bytes)}
                 </span>
               </div>
-              <p class="text-xs text-slate-400">${item.description}</p>
+              <p class="text-xs text-slate-400">${escHtml(item.description)}</p>
               <div class="text-[11px] font-mono text-slate-300 bg-slate-950/80 px-3 py-1.5 rounded-lg border border-slate-800 truncate">
-                Path: ${item.path}
+                Path: ${escHtml(item.path)}
               </div>
             </div>
-            <div class="flex items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
-              <code class="text-[11px] text-slate-400 truncate">${item.clean_cmd}</code>
-              ${
-                isSafe
-                  ? `<button onclick="cleanCacheById('${item.id}')" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shrink-0">
-                       🧹 Clean Safe Cache
-                     </button>`
-                  : `<span class="text-xs text-amber-300 font-semibold shrink-0">Review CLI Command</span>`
-              }
+            <div class="space-y-2 pt-2 border-t border-slate-800/80">
+              <div class="flex items-center justify-between gap-2">
+                <code class="text-[11px] text-slate-400 truncate">${escHtml(item.clean_cmd)}</code>
+                <button onclick="copyCliCmd('${escHtml(item.id)}', this)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300 shrink-0">
+                  Copy CLI
+                </button>
+              </div>
+              <div class="flex flex-wrap items-center justify-end gap-2">
+                <button onclick="inspectCache('${escHtml(item.id)}')" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold">
+                  🔍 Inspect Contents
+                </button>
+                <button onclick="revealCachePath('${escHtml(item.id)}')" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold">
+                  Reveal
+                </button>
+                ${
+                  isSafe
+                    ? `<button onclick="cleanCacheById('${escHtml(item.id)}', this)" class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shrink-0">
+                         🧹 Clean Safe Cache
+                       </button>`
+                    : `<span class="text-xs text-amber-300 font-semibold px-2">Manual CLI Review Required</span>`
+                }
+              </div>
             </div>
           </div>
         `;
@@ -818,29 +1634,30 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
         tbody.innerHTML = `
           <tr>
             <td colspan="6" class="p-8 text-center text-slate-400 text-sm">
-              No cloud offloads or cache cleanups recorded yet in this session.
+              No vault copies or cache cleanups recorded yet.
             </td>
           </tr>
         `;
         return;
       }
-      tbody.innerHTML = state.ledger.map(entry => {
-        const mb = (entry.size_bytes / (1024 ** 2)).toFixed(1);
-        const stub = entry.stub_path ? entry.stub_path.replace(/'/g, "\\'") : '';
+      tbody.innerHTML = state.ledger.map((entry, idx) => {
+        const sizeStr = entry.size_bytes !== null && entry.size_bytes !== undefined
+          ? fmtBytes(entry.size_bytes)
+          : '—';
         return `
           <tr class="hover:bg-slate-900/40">
-            <td class="p-3.5 text-xs text-slate-400 font-mono">${entry.timestamp}</td>
-            <td class="p-3.5 font-semibold text-white">${entry.file_name}</td>
-            <td class="p-3.5 text-xs text-slate-300 font-mono truncate max-w-xs">${entry.cloud_destination}</td>
-            <td class="p-3.5 text-xs font-mono text-cyan-300">${mb} MB</td>
-            <td class="p-3.5 text-xs font-mono text-emerald-400">${(entry.sha256 || '').slice(0, 16)}...</td>
+            <td class="p-3.5 text-xs text-slate-400 font-mono">${escHtml(entry.timestamp)}</td>
+            <td class="p-3.5 font-semibold text-white">${escHtml(entry.file_name)}</td>
+            <td class="p-3.5 text-xs text-slate-300 font-mono truncate max-w-xs">${escHtml(entry.cloud_destination)}</td>
+            <td class="p-3.5 text-xs font-mono text-cyan-300">${sizeStr}</td>
+            <td class="p-3.5 text-xs font-mono text-emerald-400">${escHtml((entry.sha256 || '').slice(0, 16))}${entry.sha256 && entry.sha256.length > 16 ? '...' : ''}</td>
             <td class="p-3.5 text-right">
               ${
-                stub
-                  ? `<button onclick="restoreStub('${stub}')" class="px-3 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/30 text-xs font-semibold">
+                entry.stub_path
+                  ? `<button onclick="restoreLedgerIndex(${idx})" class="px-3 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/30 text-xs font-semibold">
                        ↶ Restore Local
                      </button>`
-                  : `<span class="text-xs text-slate-500">Completed</span>`
+                  : `<span class="text-xs text-slate-500">${escHtml(entry.action || 'Completed')}</span>`
               }
             </td>
           </tr>
@@ -848,8 +1665,157 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       }).join('');
     }
 
+    async function offloadCandidate(idx, dryRun) {
+      const c = getFilteredCandidates()[idx];
+      if (!c) return;
+      await offloadSingle(c.path, dryRun);
+    }
+
+    async function revealCandidatePath(idx) {
+      const c = getFilteredCandidates()[idx];
+      if (!c) return;
+      await revealPath(c.path);
+    }
+
+    async function revealCachePath(cacheId) {
+      const item = state.caches.find(c => c.id === cacheId);
+      if (!item) return;
+      await revealPath(item.path);
+    }
+
+    async function revealPath(targetPath) {
+      try {
+        const res = await fetch(`${API_BASE}/api/reveal-path`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: targetPath })
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          showToast(data.error || 'Could not reveal path', true);
+          return;
+        }
+        recordActivity('Reveal Path', true, `Opened ${targetPath}`);
+      } catch (e) {
+        showToast(`Reveal failed: ${e.message}`, true);
+      }
+    }
+
+    async function copyCliCmd(cacheId, btnEl) {
+      const item = state.caches.find(c => c.id === cacheId);
+      if (!item) return;
+      try {
+        await navigator.clipboard.writeText(item.clean_cmd);
+        if (btnEl) {
+          const prev = btnEl.textContent;
+          btnEl.textContent = '✓ Copied';
+          setTimeout(() => { btnEl.textContent = prev; }, 2000);
+        }
+        recordActivity('Copy CLI', true, `Copied command for ${item.name}`);
+      } catch (e) {
+        showToast(`Command: ${item.clean_cmd}`);
+      }
+    }
+
+    async function inspectCache(cacheId) {
+      const modal = document.getElementById('inspect-cache-modal');
+      const body = document.getElementById('inspect-modal-body');
+      const cleanBtn = document.getElementById('inspect-modal-clean-btn');
+      const item = state.caches.find(c => c.id === cacheId);
+      document.getElementById('inspect-modal-title').textContent = item ? item.name : cacheId;
+      document.getElementById('inspect-modal-path').textContent = item ? item.path : '';
+      document.getElementById('inspect-modal-summary').textContent = 'Scanning real directory contents...';
+      body.innerHTML = `<div class="flex items-center gap-2 text-cyan-300"><span class="spinner"></span> Measuring entries...</div>`;
+      cleanBtn.classList.add('hidden');
+      modal.classList.remove('hidden');
+
+      try {
+        const res = await fetch(`${API_BASE}/api/cache-inspect?id=${encodeURIComponent(cacheId)}`);
+        const data = await res.json();
+        if (!data.ok) {
+          body.innerHTML = `<div class="text-rose-200">${escHtml(data.error)}</div>`;
+          return;
+        }
+        document.getElementById('inspect-modal-summary').textContent =
+          `${data.total_items} top-level entry(ies) found (showing top ${data.items.length})`;
+        if (!data.items.length) {
+          body.innerHTML = `<div class="text-slate-400">Directory is currently empty.</div>`;
+        } else {
+          body.innerHTML = data.items.map(it => `
+            <div class="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-900 border border-slate-800">
+              <div class="font-mono text-slate-200 truncate">${it.is_dir ? '📁' : '📄'} ${escHtml(it.name)}</div>
+              <div class="font-mono text-cyan-300 shrink-0">${fmtBytes(it.size_bytes)}</div>
+            </div>
+          `).join('');
+        }
+        if (data.safe_level === 'safe' && data.total_items > 0) {
+          cleanBtn.classList.remove('hidden');
+          cleanBtn.onclick = () => {
+            closeInspectModal();
+            cleanCacheById(cacheId);
+          };
+        }
+        recordActivity('Inspect Cache', true, `Inspected ${data.name}: ${data.total_items} top-level item(s)`);
+      } catch (e) {
+        body.innerHTML = `<div class="text-rose-200">Error inspecting cache: ${escHtml(e.message)}</div>`;
+      }
+    }
+
+    function closeInspectModal() {
+      document.getElementById('inspect-cache-modal').classList.add('hidden');
+    }
+
+    function openSafeCleanModal(selectAllSafe = false) {
+      const safeCaches = state.caches.filter(c => c.safe_level === 'safe' && c.size_bytes > 0);
+      if (!safeCaches.length) {
+        showToast('No verified safe caches with reclaimable data are currently detected.');
+        recordActivity('Cache Preview', true, 'No verified safe caches detected');
+        return;
+      }
+      if (selectAllSafe || !state.selectedCaches.size) {
+        safeCaches.forEach(c => state.selectedCaches.add(c.id));
+        renderCaches();
+      }
+      const chosen = safeCaches.filter(c => state.selectedCaches.has(c.id));
+      const listEl = document.getElementById('confirm-clean-list');
+      let totalBytes = 0;
+      listEl.innerHTML = chosen.map(c => {
+        totalBytes += c.size_bytes;
+        return `
+          <div class="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <div class="font-bold text-white">${escHtml(c.name)}</div>
+              <div class="font-mono text-[11px] text-slate-400 truncate">${escHtml(c.path)}</div>
+            </div>
+            <div class="font-mono text-emerald-300 font-bold shrink-0">${fmtBytes(c.size_bytes)}</div>
+          </div>
+        `;
+      }).join('');
+      document.getElementById('confirm-clean-total').textContent = fmtBytes(totalBytes);
+      document.getElementById('confirm-clean-modal').classList.remove('hidden');
+    }
+
+    function closeConfirmCleanModal() {
+      document.getElementById('confirm-clean-modal').classList.add('hidden');
+    }
+
+    async function executeConfirmedCacheClean() {
+      const ids = Array.from(state.selectedCaches);
+      closeConfirmCleanModal();
+      if (!ids.length) return;
+      for (const id of ids) {
+        await cleanCacheById(id);
+        state.selectedCaches.delete(id);
+      }
+      renderCaches();
+    }
+
     async function offloadSingle(filePath, dryRun) {
       const leaveStub = document.getElementById('leave-stub-checkbox').checked;
+      beginWork(
+        dryRun ? 'Dry-Run Hash Check' : 'Copying & Verifying to Local Vault',
+        filePath
+      );
       try {
         const res = await fetch(`${API_BASE}/api/offload`, {
           method: 'POST',
@@ -864,16 +1830,44 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
         const data = await res.json();
         if (!data.ok) {
           showToast(`Verification Blocked: ${data.error}`, true);
+          recordActivity(dryRun ? 'Hash Check' : 'Vault Copy', false, data.error);
           return;
         }
         if (dryRun) {
-          showToast(`Dry-Run SHA-256 Verified: ${data.local_sha256.slice(0, 20)}... → Ready for ${data.cloud_destination}`);
+          const msg = `Hash Check OK: ${data.file_name} (${fmtBytes(data.size_bytes)}) — source retained`;
+          showToast(msg);
+          recordActivity('Hash Check', true, msg, {
+            savedInfo: {
+              source: data.original_path || filePath,
+              sourceStatus: 'Retained (Dry-Run)',
+              dest: data.cloud_destination,
+              sha256: data.local_sha256 || 'Directory (hashed during archive creation)',
+              note: 'Dry-run only. No files copied and no local space reclaimed.'
+            }
+          });
         } else {
-          showToast(`✓ Verified SHA-256 & Offloaded ${data.entry.file_name} to Cloud Vault!`);
-          await refreshLiveScan();
+          state.sessionCopiedBytes += (data.size_bytes || 0);
+          const msg = `Verified local vault copy: ${data.entry.file_name} (${fmtBytes(data.size_bytes)}) — original retained`;
+          showToast(msg);
+          recordActivity('Vault Copy', true, msg, {
+            telemetryBefore: data.telemetry_before,
+            telemetryAfter: data.telemetry_after,
+            savedInfo: {
+              source: data.entry.original_path,
+              sourceStatus: 'Retained on disk (0 B local reclaimed)',
+              dest: data.entry.cloud_destination,
+              sha256: data.entry.sha256,
+              stub: data.entry.stub_path,
+              note: data.message
+            }
+          });
+          await refreshLiveScan(false);
         }
       } catch (e) {
         showToast(`Error contacting local agent: ${e.message}`, true);
+        recordActivity(dryRun ? 'Hash Check' : 'Vault Copy', false, e.message);
+      } finally {
+        endWork();
       }
     }
 
@@ -895,36 +1889,14 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       }
     }
 
-    async function cleanAllSafeCaches() {
-      const btn = document.getElementById('btn-1click-clean');
-      if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '<span>⏳</span> Cleaning Safe Caches...';
+    async function cleanCacheById(cacheId, btnEl = null) {
+      const item = state.caches.find(c => c.id === cacheId);
+      const label = item ? item.name : cacheId;
+      if (btnEl) {
+        btnEl.disabled = true;
+        btnEl.textContent = 'Cleaning...';
       }
-      try {
-        const res = await fetch(, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Content-Length': '2' },
-          body: '{}'
-        });
-        const data = await res.json();
-        if (data.ok) {
-          showToast();
-          await refreshLiveScan();
-        } else {
-          showToast(, true);
-        }
-      } catch (e) {
-        showToast(, true);
-      } finally {
-        if (btn) {
-          btn.disabled = false;
-          btn.innerHTML = '<span>✨</span> 1-Click Smart Clean All Safe Caches';
-        }
-      }
-    }
-
-    async function cleanCacheById(cacheId) {
+      beginWork(`Cleaning Cache: ${label}`, item ? item.path : cacheId);
       try {
         const res = await fetch(`${API_BASE}/api/clean-cache`, {
           method: 'POST',
@@ -934,16 +1906,45 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
         const data = await res.json();
         if (!data.ok) {
           showToast(data.error, true);
+          recordActivity('Cache Clean', false, `${label}: ${data.error}`, {
+            telemetryBefore: data.telemetry_before,
+            telemetryAfter: data.telemetry_after,
+            partialErrors: data.errors
+          });
           return;
         }
-        showToast(`✓ Cleaned cache and reclaimed ${data.freed_mb} MB!`);
-        await refreshLiveScan();
+        state.sessionReclaimedBytes += (data.freed_bytes || 0);
+        const msg = `Cleaned ${data.cache_name}: removed ${data.deleted_count} item(s), freed ${fmtBytes(data.freed_bytes)}`;
+        showToast(`✓ ${msg}`);
+        recordActivity('Cache Clean', true, msg, {
+          telemetryBefore: data.telemetry_before,
+          telemetryAfter: data.telemetry_after,
+          deletedCount: data.deleted_count,
+          deletedItems: data.deleted_items,
+          freedBytes: data.freed_bytes,
+          partialErrors: data.partial_errors
+        });
+        await refreshLiveScan(false);
       } catch (e) {
         showToast(`Failed to clean cache: ${e.message}`, true);
+        recordActivity('Cache Clean', false, `${label}: ${e.message}`);
+      } finally {
+        endWork();
+        if (btnEl) {
+          btnEl.disabled = false;
+          btnEl.textContent = '🧹 Clean Safe Cache';
+        }
       }
     }
 
+    async function restoreLedgerIndex(idx) {
+      const entry = state.ledger[idx];
+      if (!entry || !entry.stub_path) return;
+      await restoreStub(entry.stub_path);
+    }
+
     async function restoreStub(stubPath) {
+      beginWork('Restoring from Local Vault', stubPath);
       try {
         const res = await fetch(`${API_BASE}/api/restore`, {
           method: 'POST',
@@ -953,12 +1954,26 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
         const data = await res.json();
         if (!data.ok) {
           showToast(data.error, true);
+          recordActivity('Restore', false, data.error);
           return;
         }
-        showToast(`✓ Restored ${data.entry.file_name} and verified SHA-256 integrity!`);
-        await refreshLiveScan();
+        const msg = `Restored ${data.entry.file_name} with verified SHA-256`;
+        showToast(`✓ ${msg}`);
+        recordActivity('Restore', true, msg, {
+          telemetryAfter: data.telemetry_after,
+          savedInfo: {
+            source: data.entry.cloud_destination,
+            sourceStatus: 'Verified Vault Source',
+            dest: data.entry.original_path,
+            sha256: data.entry.sha256
+          }
+        });
+        await refreshLiveScan(false);
       } catch (e) {
         showToast(`Restore error: ${e.message}`, true);
+        recordActivity('Restore', false, e.message);
+      } finally {
+        endWork();
       }
     }
 
@@ -986,9 +2001,1045 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
           toggleAddProviderModal(false);
           renderProviders();
           showToast(`Connected 3rd-party cloud container: ${name}`);
+          recordActivity('Add Vault', true, `Connected ${name} (${vault_path})`);
         }
       } catch (e) {
         showToast(`Could not save provider: ${e.message}`, true);
+      }
+    }
+
+    // ── DaisyDisk-style Collector Tray ──
+    function addToCollectorByIdx(idx) {
+      const list = getFilteredCandidates();
+      const c = list[idx];
+      if (!c) return;
+      addToCollector(c.path);
+    }
+
+    function addToCollector(filePath) {
+      if (!filePath) return;
+      state.collectorTray.add(filePath);
+      renderCollectorTray();
+      showToast(`Staged in Collector Tray: ${filePath.split('/').pop()}`);
+    }
+
+    function removeFromCollector(filePath) {
+      state.collectorTray.delete(filePath);
+      renderCollectorTray();
+    }
+
+    function clearCollectorTray() {
+      state.collectorTray.clear();
+      renderCollectorTray();
+    }
+
+    function renderCollectorTray() {
+      const bar = document.getElementById('collector-tray-bar');
+      const summary = document.getElementById('collector-tray-summary');
+      const itemsEl = document.getElementById('collector-tray-items');
+      if (!bar || !summary || !itemsEl) return;
+      const items = Array.from(state.collectorTray);
+      if (!items.length) {
+        bar.classList.add('hidden');
+        return;
+      }
+      bar.classList.remove('hidden');
+      summary.textContent = `${items.length} staged item(s) ready for Hash Check or Vault Copy (sources retained)`;
+      itemsEl.innerHTML = items.map(p => {
+        const name = p.split('/').pop() || p;
+        return `
+          <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-200 font-mono">
+            <span class="truncate max-w-xs" title="${escHtml(p)}">${escHtml(name)}</span>
+            <button onclick="removeFromCollector(${JSON.stringify(p).replace(/"/g, '&quot;')})" class="text-slate-400 hover:text-rose-300 font-bold">✕</button>
+          </span>
+        `;
+      }).join('');
+    }
+
+    async function runCollectorBatch(dryRun) {
+      const items = Array.from(state.collectorTray);
+      if (!items.length) {
+        showToast('Collector Tray is empty.', true);
+        return;
+      }
+      for (const p of items) {
+        await offloadSingle(p, dryRun);
+      }
+    }
+
+    // ── DevCleaner-style Granular Project & Xcode Sub-Target Cleaner ──
+    async function loadProjectTargets() {
+      const listEl = document.getElementById('project-targets-list');
+      if (listEl) listEl.innerHTML = `<div class="text-xs text-slate-400">Scanning project build artifacts &amp; Xcode DerivedData...</div>`;
+      try {
+        const res = await fetch(`${API_BASE}/api/project-targets`);
+        const data = await res.json();
+        if (!data.ok) {
+          if (listEl) listEl.innerHTML = `<div class="text-xs text-rose-300">${escHtml(data.error || 'Failed to load targets')}</div>`;
+          return;
+        }
+        state.projectTargets = data.targets || [];
+        const validPaths = new Set(state.projectTargets.map(t => t.path));
+        state.selectedSubTargets = new Set(Array.from(state.selectedSubTargets).filter(p => validPaths.has(p)));
+        renderProjectTargets();
+      } catch (e) {
+        if (listEl) listEl.innerHTML = `<div class="text-xs text-rose-300">Error loading project targets: ${escHtml(e.message)}</div>`;
+      }
+    }
+
+    function toggleSubTarget(path, checked) {
+      if (checked) state.selectedSubTargets.add(path);
+      else state.selectedSubTargets.delete(path);
+      const countEl = document.getElementById('selected-subtarget-count');
+      if (countEl) countEl.textContent = String(state.selectedSubTargets.size);
+    }
+
+    function renderProjectTargets() {
+      const listEl = document.getElementById('project-targets-list');
+      const countEl = document.getElementById('selected-subtarget-count');
+      if (countEl) countEl.textContent = String(state.selectedSubTargets.size);
+      if (!listEl) return;
+      if (!state.projectTargets.length) {
+        listEl.innerHTML = `<div class="text-xs text-slate-400">No project build directories (target/, node_modules/, DerivedData, iOS DeviceSupport) found.</div>`;
+        return;
+      }
+      listEl.innerHTML = state.projectTargets.map(t => {
+        const checked = state.selectedSubTargets.has(t.path);
+        const safePathAttr = JSON.stringify(t.path).replace(/"/g, '&quot;');
+        return `
+          <div class="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-900/70 border border-slate-800 text-xs">
+            <label class="flex items-center gap-2.5 min-w-0 cursor-pointer">
+              <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleSubTarget(${safePathAttr}, this.checked)" class="accent-cyan-400" />
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="font-semibold text-white truncate">${escHtml(t.project)} / ${escHtml(t.name)}</span>
+                  <span class="px-1.5 py-0.5 rounded bg-slate-800 text-cyan-300 text-[10px]">${escHtml(t.kind)}</span>
+                </div>
+                <div class="text-[11px] font-mono text-slate-400 truncate">${escHtml(t.path)}</div>
+              </div>
+            </label>
+            <span class="font-mono font-bold text-cyan-300 shrink-0">${fmtBytes(t.size_bytes)}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function cleanSelectedProjectTargets() {
+      const paths = Array.from(state.selectedSubTargets);
+      if (!paths.length) {
+        showToast('Select at least one project sub-target to clean.', true);
+        return;
+      }
+      beginWork('Cleaning Project Sub-Targets', `Removing ${paths.length} selected build artifact directory(s)...`);
+      let totalFreed = 0;
+      let totalDeleted = 0;
+      let allErrors = [];
+      let firstTelemetry = null;
+      let lastTelemetry = null;
+      try {
+        for (const p of paths) {
+          const res = await fetch(`${API_BASE}/api/clean-project-target`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: p })
+          });
+          const data = await res.json();
+          if (data.ok) {
+            if (!firstTelemetry) firstTelemetry = data.telemetry_before;
+            lastTelemetry = data.telemetry_after;
+            totalFreed += (data.freed_bytes || 0);
+            totalDeleted += (data.deleted_count || 0);
+            if (data.partial_errors && data.partial_errors.length) {
+              allErrors.push(...data.partial_errors);
+            }
+          } else {
+            allErrors.push(`${p}: ${data.error}`);
+          }
+        }
+        state.sessionReclaimedBytes += totalFreed;
+        state.selectedSubTargets.clear();
+        const msg = `Cleaned ${paths.length} sub-target(s): removed ${totalDeleted} item(s), freed ${fmtBytes(totalFreed)}`;
+        showToast(`✓ ${msg}`);
+        recordActivity('Project Sub-Target Clean', true, msg, {
+          telemetryBefore: firstTelemetry,
+          telemetryAfter: lastTelemetry,
+          deletedCount: totalDeleted,
+          freedBytes: totalFreed,
+          partialErrors: allErrors
+        });
+        await loadProjectTargets();
+        await refreshLiveScan(false);
+      } catch (e) {
+        showToast(`Sub-target clean error: ${e.message}`, true);
+        recordActivity('Project Sub-Target Clean', false, e.message);
+      } finally {
+        endWork();
+      }
+    }
+
+    // ── DaisyDisk / WinDirStat-style Storage Explorer ──
+    async function loadExplorer(targetPath) {
+      const itemsEl = document.getElementById('explorer-items-list');
+      const breakdownEl = document.getElementById('explorer-breakdown');
+      const pathInput = document.getElementById('explorer-path-input');
+      if (itemsEl) itemsEl.innerHTML = `<div class="text-xs text-slate-400">Measuring folder sizes...</div>`;
+      try {
+        const q = targetPath ? `?path=${encodeURIComponent(targetPath)}` : '';
+        const res = await fetch(`${API_BASE}/api/explore${q}`);
+        const data = await res.json();
+        if (!data.ok) {
+          showToast(data.error || 'Cannot explore path', true);
+          if (itemsEl) itemsEl.innerHTML = `<div class="text-xs text-rose-300">${escHtml(data.error)}</div>`;
+          return;
+        }
+        state.explorer = data;
+        if (pathInput) pathInput.value = data.path;
+        renderExplorer();
+      } catch (e) {
+        if (itemsEl) itemsEl.innerHTML = `<div class="text-xs text-rose-300">Explorer error: ${escHtml(e.message)}</div>`;
+      }
+    }
+
+    function explorerGoUp() {
+      if (state.explorer && state.explorer.parent_path) {
+        loadExplorer(state.explorer.parent_path);
+      }
+    }
+
+    function renderExplorer() {
+      const d = state.explorer;
+      const breakdownEl = document.getElementById('explorer-breakdown');
+      const itemsEl = document.getElementById('explorer-items-list');
+      if (breakdownEl) {
+        const b = d.breakdown || [];
+        breakdownEl.innerHTML = b.length
+          ? `<div class="flex flex-wrap gap-2">${b.map(cat => `
+              <span class="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-200">
+                <strong class="text-cyan-300">${escHtml(cat.category)}</strong>: ${fmtBytes(cat.size_bytes)} (${cat.percent}%)
+              </span>`).join('')}</div>`
+          : '';
+      }
+      if (!itemsEl) return;
+      const items = d.items || [];
+      if (!items.length) {
+        itemsEl.innerHTML = `<div class="text-xs text-slate-400">Empty directory.</div>`;
+        return;
+      }
+      itemsEl.innerHTML = items.map(item => {
+        const safePath = JSON.stringify(item.path).replace(/"/g, '&quot;');
+        const clickHandler = item.is_dir ? `onclick="loadExplorer(${safePath})"` : '';
+        return `
+          <div class="p-2.5 rounded-xl bg-slate-900/70 border border-slate-800 space-y-1.5 text-xs">
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2 min-w-0">
+                <span>${item.is_dir ? '📁' : '📄'}</span>
+                <button ${clickHandler} class="${item.is_dir ? 'text-cyan-300 hover:underline font-semibold cursor-pointer' : 'text-white font-medium cursor-default'} truncate text-left">
+                  ${escHtml(item.name)}
+                </button>
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">${escHtml(item.category)}</span>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <span class="font-mono text-cyan-300 font-semibold">${fmtBytes(item.size_bytes)} (${item.percent}%)</span>
+                <button onclick="addToCollector(${safePath})" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300">+ Stage</button>
+                <button onclick="confirmDeletePath(${safePath}, ${Number(item.size_bytes || 0)}, 'Deleting from Storage Explorer permanently removes this local item.')" class="px-2 py-0.5 rounded bg-rose-600/80 hover:bg-rose-500 text-white font-semibold">Delete</button>
+              </div>
+            </div>
+            <div class="w-full h-1.5 rounded-full bg-slate-950 overflow-hidden">
+              <div class="h-full bg-cyan-500/80" style="width: ${Math.max(1, Math.min(100, item.percent))}%"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // ── WizTree-style Exact SHA-256 Duplicate Finder ──
+    async function scanDuplicates() {
+      const root = (document.getElementById('dup-root-input')?.value || '').trim();
+      const resultsEl = document.getElementById('duplicates-results');
+      const btn = document.getElementById('btn-scan-dups');
+      if (btn) btn.disabled = true;
+      beginWork('Scanning Exact SHA-256 Duplicates', root || 'Home user folders');
+      try {
+        const q = root ? `?root=${encodeURIComponent(root)}&min_mb=1` : '?min_mb=1';
+        const res = await fetch(`${API_BASE}/api/duplicates${q}`);
+        const data = await res.json();
+        if (!data.ok) {
+          showToast(data.error || 'Duplicate scan failed', true);
+          if (resultsEl) resultsEl.innerHTML = `<div class="text-xs text-rose-300">${escHtml(data.error)}</div>`;
+          return;
+        }
+        state.duplicates = data;
+        if (!resultsEl) return;
+        const groups = data.duplicate_groups || [];
+        if (!groups.length) {
+          resultsEl.innerHTML = `<div class="text-xs text-emerald-300">Scanned ${data.scanned_files} file(s) (&ge; 1 MB). Zero exact SHA-256 duplicates found.</div>`;
+        } else {
+          resultsEl.innerHTML = `
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="text-xs text-amber-300 font-semibold">
+                Found ${groups.length} duplicate group(s) across ${data.scanned_files} scanned files — ${fmtBytes(data.total_wasted_bytes)} redundant space (read-only audit):
+              </div>
+              <button onclick="deleteAllDuplicateExtras()" class="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold">
+                🗑️ Preview &amp; Delete All Redundant Copies (Keep First in Each Group)
+              </button>
+            </div>
+            ${groups.map(g => `
+              <div class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1.5 text-xs">
+                <div class="flex items-center justify-between">
+                  <span class="font-mono text-cyan-300">SHA-256: ${escHtml(g.sha256.slice(0, 16))}... (${g.count} copies × ${fmtBytes(g.file_size_bytes)})</span>
+                  <span class="text-amber-300 font-bold">Wasted: ${fmtBytes(g.wasted_bytes)}</span>
+                </div>
+                <div class="space-y-1 font-mono text-[11px] text-slate-300">
+                  ${g.files.map(f => {
+                    const safeDupPath = JSON.stringify(f.path).replace(/"/g, '&quot;');
+                    return `<div class="flex items-center justify-between gap-2">
+                      <span class="truncate">• ${escHtml(f.path)}</span>
+                      <button onclick="confirmDeletePath(${safeDupPath}, ${Number(g.file_size_bytes || 0)}, 'Duplicate copy (${g.count} identical SHA-256 copies found). Keep at least one copy if you still need this file.')" class="px-2 py-0.5 rounded bg-rose-600/80 hover:bg-rose-500 text-white font-sans font-semibold shrink-0">Delete Copy</button>
+                    </div>`;
+                  }).join('')}
+                </div>
+              </div>
+            `).join('')}
+          `;
+        }
+        recordActivity('Duplicate Scan', true, `Scanned ${data.scanned_files} file(s): ${groups.length} duplicate group(s), ${fmtBytes(data.total_wasted_bytes)} redundant`);
+      } catch (e) {
+        showToast(`Duplicate scan error: ${e.message}`, true);
+      } finally {
+        endWork();
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    // ── BleachBit-style Exportable Audit Report ──
+    function exportAuditReport(format) {
+      const payload = {
+        generated_at: new Date().toISOString(),
+        telemetry: state.telemetry,
+        providers: state.providers,
+        caches: state.caches,
+        candidates: state.candidates,
+        ledger: state.ledger,
+        duplicates: state.duplicates
+      };
+      let content = '';
+      let mime = 'application/json';
+      let ext = 'json';
+      if (format === 'csv') {
+        mime = 'text/csv';
+        ext = 'csv';
+        const rows = [['Section', 'Name', 'Path', 'SizeBytes', 'StatusOrHash']];
+        (state.caches || []).forEach(c => rows.push(['Cache', c.name, c.path, c.size_bytes, c.safe_level]));
+        (state.candidates || []).forEach(c => rows.push(['Candidate', c.name, c.path, c.size_bytes, c.recommended_action]));
+        (state.ledger || []).forEach(l => rows.push(['Ledger', l.file_name, l.original_path, l.size_bytes, l.sha256]));
+        content = rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+      } else {
+        content = JSON.stringify(payload, null, 2);
+      }
+      const blob = new Blob([content], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `cloudspaceguard-audit-${Date.now()}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast(`Exported ${ext.toUpperCase()} audit report.`);
+      recordActivity('Export Audit', true, `Downloaded ${a.download}`);
+    }
+
+    // ── Rclone Remote Integration ──
+    async function loadRcloneStatus() {
+      const el = document.getElementById('rclone-status-text');
+      if (!el) return;
+      try {
+        const res = await fetch(`${API_BASE}/api/rclone-status`);
+        const data = await res.json();
+        if (!data.installed) {
+          el.textContent = 'rclone binary not found on PATH. Install rclone and configure a remote (`rclone config`) to enable verified remote cloud durability.';
+        } else if (!data.remotes || !data.remotes.length) {
+          el.textContent = `rclone installed (${data.binary}), but 0 remotes configured. Run \`rclone config\` first.`;
+        } else {
+          el.textContent = `rclone ready (${data.binary}) — Remotes: ${data.remotes.join(', ')}`;
+        }
+      } catch (e) {
+        el.textContent = `Could not check rclone: ${e.message}`;
+      }
+    }
+
+    async function executeRcloneVerify(dryRun) {
+      const sourcePath = (document.getElementById('rclone-source-input')?.value || '').trim();
+      const remoteTarget = (document.getElementById('rclone-remote-input')?.value || '').trim();
+      const deleteAfterVerify = Boolean(document.getElementById('rclone-delete-after-verify')?.checked);
+      const outBox = document.getElementById('rclone-output-box');
+      if (!sourcePath || !remoteTarget) {
+        showToast('Enter both a local source path and an rclone remote target (e.g. remote:bucket/path).', true);
+        return;
+      }
+      beginWork(dryRun ? 'rclone Dry-Run Check' : 'rclone Checksum Copy & Verify', `${sourcePath} -> ${remoteTarget}`);
+      try {
+        const res = await fetch(`${API_BASE}/api/rclone-verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            source_path: sourcePath,
+            remote_target: remoteTarget,
+            dry_run: dryRun,
+            delete_source_after_remote_verify: !dryRun && deleteAfterVerify
+          })
+        });
+        const data = await res.json();
+        if (outBox) {
+          outBox.classList.remove('hidden');
+          outBox.textContent = data.output || data.error || JSON.stringify(data, null, 2);
+        }
+        if (!data.ok) {
+          showToast(data.error || 'rclone verification failed', true);
+          recordActivity('rclone Verify', false, data.error || 'Failed');
+          return;
+        }
+        if (!data.source_retained) {
+          state.sessionReclaimedBytes += (data.freed_bytes || 0);
+        }
+        const msg = dryRun
+          ? `rclone dry-run OK (${sourcePath} -> ${remoteTarget}); source retained`
+          : data.source_retained
+            ? `rclone copy + checksum verified (${sourcePath} -> ${remoteTarget}); source retained`
+            : `rclone verified remote durability & deleted local original (${fmtBytes(data.freed_bytes)} reclaimed)`;
+        showToast(`✓ ${msg}`);
+        recordActivity('rclone Verify', true, msg, {
+          telemetryBefore: data.telemetry_before,
+          telemetryAfter: data.telemetry_after,
+          freedBytes: data.freed_bytes || 0,
+          savedInfo: {
+            source: sourcePath,
+            sourceStatus: data.source_retained ? 'Retained on disk' : 'Deleted after remote rclone check',
+            dest: remoteTarget,
+            note: data.remote_durability_verified ? 'Remote durability verified by `rclone check`.' : 'Dry-run only.'
+          }
+        });
+        if (!data.source_retained) await refreshLiveScan(false);
+      } catch (e) {
+        showToast(`rclone error: ${e.message}`, true);
+      } finally {
+        endWork();
+      }
+    }
+
+    // ── Explicit User-Confirmed Local Delete ──
+    let _pendingDeleteTarget = null;
+    function confirmDeleteCandidate(idx) {
+      const list = getFilteredCandidates();
+      const c = list[idx];
+      if (!c) return;
+      confirmDeletePath(c.path, c.size_bytes, 'Permanently delete this local file/folder to reclaim space. If you need a backup, verify it is uploaded first.');
+    }
+
+    function confirmDeletePath(targetPath, sizeBytes, note) {
+      _pendingDeleteTarget = { path: targetPath, sizeBytes };
+      document.getElementById('delete-modal-path').textContent = targetPath;
+      document.getElementById('delete-modal-size').textContent = `Size on disk: ${fmtBytes(sizeBytes)}`;
+      document.getElementById('delete-modal-note').textContent = note || 'This permanently deletes the selected local file or folder from your disk to reclaim space.';
+      document.getElementById('confirm-delete-modal').classList.remove('hidden');
+    }
+
+    function closeConfirmDeleteModal() {
+      _pendingDeleteTarget = null;
+      document.getElementById('confirm-delete-modal').classList.add('hidden');
+    }
+
+    async function executeConfirmedLocalDelete() {
+      if (!_pendingDeleteTarget) return;
+      const target = _pendingDeleteTarget;
+      closeConfirmDeleteModal();
+      beginWork('Deleting Confirmed Local Item', target.path);
+      try {
+        const res = await fetch(`${API_BASE}/api/delete-local-path`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: target.path, confirm_delete: true })
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          showToast(data.error || 'Delete refused', true);
+          recordActivity('Local Delete', false, `${target.path}: ${data.error}`);
+          return;
+        }
+        state.sessionReclaimedBytes += (data.freed_bytes || 0);
+        state.selectedFiles.delete(target.path);
+        state.collectorTray.delete(target.path);
+        const msg = `Deleted ${data.name} — freed ${fmtBytes(data.freed_bytes)}`;
+        showToast(`✓ ${msg}`);
+        recordActivity('Local Delete', true, msg, {
+          telemetryBefore: data.telemetry_before,
+          telemetryAfter: data.telemetry_after,
+          deletedCount: 1,
+          deletedItems: [{ name: data.name, path: data.path, is_dir: data.is_dir, size_bytes: data.freed_bytes }],
+          freedBytes: data.freed_bytes
+        });
+        if (!document.getElementById('tab-panel-explorer')?.classList.contains('hidden')) {
+          if (state.explorer && state.explorer.path) await loadExplorer(state.explorer.path);
+          if (state.duplicates) await scanDuplicates();
+        }
+        await refreshLiveScan(false);
+      } catch (e) {
+        showToast(`Delete error: ${e.message}`, true);
+        recordActivity('Local Delete', false, e.message);
+      } finally {
+        endWork();
+      }
+    }
+
+    // ── Batch Select-All, Batch Delete, & Batch Remote Cloud Offload ──
+    function selectAllSafeCaches(checked) {
+      state.selectedCaches.clear();
+      if (checked) {
+        state.caches.filter(c => c.safe_level === 'safe').forEach(c => state.selectedCaches.add(c.id));
+      }
+      renderCaches();
+    }
+
+    function selectAllSubTargets(checked) {
+      state.selectedSubTargets.clear();
+      if (checked) {
+        state.projectTargets.forEach(t => state.selectedSubTargets.add(t.path));
+      }
+      renderProjectTargets();
+    }
+
+    let _pendingBatchDeletePaths = [];
+    function _resolveBatchPaths(source) {
+      if (source === 'tray') return Array.from(state.collectorTray);
+      if (source === 'duplicates') {
+        const extras = [];
+        ((state.duplicates && state.duplicates.duplicate_groups) || []).forEach(g => {
+          (g.files || []).slice(1).forEach(f => extras.push(f.path));
+        });
+        return extras;
+      }
+      return Array.from(state.selectedFiles);
+    }
+
+    function deleteAllDuplicateExtras() {
+      openBatchDeleteModal('duplicates');
+    }
+
+    function openBatchDeleteModal(source) {
+      const paths = _resolveBatchPaths(source);
+      if (!paths.length) {
+        showToast('Select at least one item first.', true);
+        return;
+      }
+      _pendingBatchDeletePaths = paths;
+      const listEl = document.getElementById('batch-delete-list');
+      const sumEl = document.getElementById('batch-delete-summary');
+      const sizeMap = new Map((state.candidates || []).map(c => [c.path, c.size_bytes]));
+      let totalEst = 0;
+      listEl.innerHTML = paths.map(p => {
+        const sz = sizeMap.get(p);
+        if (typeof sz === 'number') totalEst += sz;
+        return `<div class="p-2 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-between gap-2 font-mono">
+          <span class="truncate text-white">${escHtml(p)}</span>
+          <span class="text-cyan-300 shrink-0">${typeof sz === 'number' ? fmtBytes(sz) : ''}</span>
+        </div>`;
+      }).join('');
+      sumEl.textContent = totalEst > 0 ? `${paths.length} item(s) (~${fmtBytes(totalEst)})` : `${paths.length} item(s)`;
+      document.getElementById('confirm-batch-delete-modal').classList.remove('hidden');
+    }
+
+    function closeBatchDeleteModal() {
+      _pendingBatchDeletePaths = [];
+      document.getElementById('confirm-batch-delete-modal').classList.add('hidden');
+    }
+
+    async function executeConfirmedBatchDelete() {
+      const paths = _pendingBatchDeletePaths.slice();
+      closeBatchDeleteModal();
+      if (!paths.length) return;
+      beginWork('Batch Deleting Selected Items', `Removing ${paths.length} item(s) from disk...`);
+      let totalFreed = 0;
+      let deletedCount = 0;
+      const deletedItems = [];
+      const errors = [];
+      let firstTel = null;
+      let lastTel = null;
+      try {
+        for (const p of paths) {
+          const res = await fetch(`${API_BASE}/api/delete-local-path`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: p, confirm_delete: true })
+          });
+          const data = await res.json();
+          if (data.ok) {
+            if (!firstTel) firstTel = data.telemetry_before;
+            lastTel = data.telemetry_after;
+            totalFreed += (data.freed_bytes || 0);
+            deletedCount += 1;
+            deletedItems.push({ name: data.name, path: data.path, is_dir: data.is_dir, size_bytes: data.freed_bytes });
+            state.selectedFiles.delete(p);
+            state.collectorTray.delete(p);
+          } else {
+            errors.push(`${p}: ${data.error}`);
+          }
+        }
+        state.sessionReclaimedBytes += totalFreed;
+        const msg = `Batch deleted ${deletedCount}/${paths.length} item(s) — freed ${fmtBytes(totalFreed)}`;
+        showToast(`✓ ${msg}`, errors.length > 0 && deletedCount === 0);
+        recordActivity('Batch Delete', deletedCount > 0, msg, {
+          telemetryBefore: firstTel,
+          telemetryAfter: lastTel,
+          deletedCount,
+          deletedItems,
+          freedBytes: totalFreed,
+          partialErrors: errors
+        });
+        if (!document.getElementById('tab-panel-explorer')?.classList.contains('hidden')) {
+          if (state.explorer && state.explorer.path) await loadExplorer(state.explorer.path);
+          if (state.duplicates) await scanDuplicates();
+        }
+        await refreshLiveScan(false);
+      } catch (e) {
+        showToast(`Batch delete error: ${e.message}`, true);
+        recordActivity('Batch Delete', false, e.message);
+      } finally {
+        endWork();
+      }
+    }
+
+    let _pendingBatchRclonePaths = [];
+    function openBatchRcloneModal(source) {
+      const paths = _resolveBatchPaths(source);
+      if (!paths.length) {
+        showToast('Select or stage at least one item first.', true);
+        return;
+      }
+      _pendingBatchRclonePaths = paths;
+      const listEl = document.getElementById('batch-rclone-list');
+      listEl.innerHTML = paths.map(p => `<div class="truncate">• ${escHtml(p)}</div>`).join('');
+      const existingRemote = (document.getElementById('rclone-remote-input')?.value || '').trim();
+      if (existingRemote) {
+        document.getElementById('batch-rclone-remote-input').value = existingRemote;
+      }
+      document.getElementById('batch-rclone-modal').classList.remove('hidden');
+    }
+
+    function closeBatchRcloneModal() {
+      _pendingBatchRclonePaths = [];
+      document.getElementById('batch-rclone-modal').classList.add('hidden');
+    }
+
+    async function executeBatchRclone(dryRun) {
+      const paths = _pendingBatchRclonePaths.slice();
+      const remoteTarget = (document.getElementById('batch-rclone-remote-input')?.value || '').trim();
+      const deleteAfter = Boolean(document.getElementById('batch-rclone-delete-after')?.checked);
+      if (!remoteTarget) {
+        showToast('Enter an rclone remote target prefix (e.g. gdrive:CloudSpaceGuard_Vault/).', true);
+        return;
+      }
+      closeBatchRcloneModal();
+      beginWork(dryRun ? 'rclone Batch Dry-Run' : 'rclone Batch Upload & Verify', `${paths.length} item(s) -> ${remoteTarget}`);
+      let okCount = 0;
+      let totalFreed = 0;
+      const errors = [];
+      let firstTel = null;
+      let lastTel = null;
+      try {
+        for (const p of paths) {
+          const res = await fetch(`${API_BASE}/api/rclone-verify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              source_path: p,
+              remote_target: remoteTarget,
+              dry_run: dryRun,
+              delete_source_after_remote_verify: !dryRun && deleteAfter
+            })
+          });
+          const data = await res.json();
+          if (data.ok) {
+            okCount += 1;
+            if (!firstTel) firstTel = data.telemetry_before;
+            lastTel = data.telemetry_after;
+            if (!data.source_retained) {
+              totalFreed += (data.freed_bytes || 0);
+              state.selectedFiles.delete(p);
+              state.collectorTray.delete(p);
+            }
+          } else {
+            errors.push(`${p}: ${data.error}`);
+          }
+        }
+        state.sessionReclaimedBytes += totalFreed;
+        const msg = dryRun
+          ? `rclone batch dry-run: ${okCount}/${paths.length} OK (sources retained)`
+          : totalFreed > 0
+            ? `rclone batch verified ${okCount}/${paths.length} & freed ${fmtBytes(totalFreed)}`
+            : `rclone batch uploaded & checksum-verified ${okCount}/${paths.length} (sources retained)`;
+        showToast(okCount > 0 ? `✓ ${msg}` : `rclone batch failed: ${errors[0] || 'check rclone config'}`, okCount === 0);
+        recordActivity('rclone Batch', okCount > 0, msg, {
+          telemetryBefore: firstTel,
+          telemetryAfter: lastTel,
+          freedBytes: totalFreed,
+          partialErrors: errors
+        });
+        if (totalFreed > 0) await refreshLiveScan(false);
+      } catch (e) {
+        showToast(`rclone batch error: ${e.message}`, true);
+        recordActivity('rclone Batch', false, e.message);
+      } finally {
+        endWork();
+      }
+    }
+
+    // ── 1-Click Easy Workflows ──
+    function oneClickSelectAllCandidates() {
+      if (!state.candidates.length) {
+        showToast('No large candidate files > 25 MB detected yet.', true);
+        return;
+      }
+      toggleSelectAllFiles(true);
+      switchTab('offload');
+      showToast(`Selected all ${state.selectedFiles.size} large file(s)/folder(s).`);
+    }
+
+    async function oneClickStoreAllVault() {
+      if (!state.selectedFiles.size) {
+        toggleSelectAllFiles(true);
+      }
+      if (!state.selectedFiles.size) {
+        showToast('No candidate files available to copy.', true);
+        return;
+      }
+      switchTab('offload');
+      await runBatchOffload(false);
+    }
+
+    function oneClickStoreAllRemote() {
+      if (!state.selectedFiles.size) {
+        toggleSelectAllFiles(true);
+      }
+      if (!state.selectedFiles.size) {
+        showToast('No candidate files available for remote rclone offload.', true);
+        return;
+      }
+      switchTab('offload');
+      openBatchRcloneModal('candidates');
+    }
+
+    function oneClickDeleteAllCandidates() {
+      if (!state.selectedFiles.size) {
+        toggleSelectAllFiles(true);
+      }
+      if (!state.selectedFiles.size) {
+        showToast('No candidate files available to delete.', true);
+        return;
+      }
+      switchTab('offload');
+      openBatchDeleteModal('candidates');
+    }
+
+    function oneClickCleanAllSafeCaches() {
+      selectAllSafeCaches(true);
+      if (!state.selectedCaches.size) {
+        showToast('No verified safe caches detected to clean.', true);
+        return;
+      }
+      switchTab('caches');
+      openSafeCleanModal(false);
+    }
+
+    async function oneClickCleanAllSubTargets() {
+      switchTab('caches');
+      await loadProjectTargets();
+      if (!state.projectTargets.length) {
+        showToast('No project build or Xcode sub-targets found.', true);
+        return;
+      }
+      selectAllSubTargets(true);
+      await cleanSelectedProjectTargets();
+    }
+
+    async function oneClickDeduplicate() {
+      switchTab('explorer');
+      await scanDuplicates();
+      const groups = (state.duplicates && state.duplicates.duplicate_groups) || [];
+      if (groups.length) {
+        deleteAllDuplicateExtras();
+      }
+    }
+
+    // ── Smart Cleanup Plan & Cloud Eviction ──
+    function closeSmartPlanModal() {
+      document.getElementById('smart-plan-modal').classList.add('hidden');
+    }
+
+    async function openSmartPlanModal() {
+      const modal = document.getElementById('smart-plan-modal');
+      const body = document.getElementById('smart-plan-body');
+      modal.classList.remove('hidden');
+      body.innerHTML = `<div class="text-slate-400">Scanning safe caches, build sub-targets, and exact duplicates...</div>`;
+      try {
+        const tgt = state.telemetry.target_free_gb || 74;
+        const res = await fetch(`${API_BASE}/api/smart-plan?target_gb=${encodeURIComponent(tgt)}`);
+        const d = await res.json();
+        if (!d.ok) {
+          body.innerHTML = `<div class="text-rose-300">${escHtml(d.error || 'Could not compute plan')}</div>`;
+          return;
+        }
+        body.innerHTML = `
+          <div class="p-3 rounded-xl bg-slate-900 border border-slate-800 flex flex-wrap justify-between gap-2">
+            <span>Target Deficit: <strong class="text-amber-300">${fmtBytes(d.deficit_bytes)}</strong></span>
+            <span>Estimated Safe + Duplicate Reclaim: <strong class="text-emerald-300">${fmtBytes(d.estimated_reclaim_bytes)}</strong></span>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-900/70 border border-slate-800 flex items-center justify-between gap-2">
+            <div>
+              <div class="font-bold text-white">1. Verified Safe Caches (${d.safe_caches.length} item(s))</div>
+              <div class="text-slate-400">Total: ${fmtBytes(d.safe_caches_bytes)}</div>
+            </div>
+            <button onclick="closeSmartPlanModal(); oneClickCleanAllSafeCaches();" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold">Preview &amp; Clean</button>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-900/70 border border-slate-800 flex items-center justify-between gap-2">
+            <div>
+              <div class="font-bold text-white">2. Project Build &amp; Xcode Sub-Targets (${d.sub_targets.length} item(s))</div>
+              <div class="text-slate-400">Total: ${fmtBytes(d.sub_targets_bytes)}</div>
+            </div>
+            <button onclick="closeSmartPlanModal(); oneClickCleanAllSubTargets();" class="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold">Clean All Sub-Targets</button>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-900/70 border border-slate-800 flex items-center justify-between gap-2">
+            <div>
+              <div class="font-bold text-white">3. Redundant Exact SHA-256 Duplicates (${d.duplicate_extras.length} extra copies)</div>
+              <div class="text-slate-400">Total: ${fmtBytes(d.duplicate_extras_bytes)}</div>
+            </div>
+            <button onclick="closeSmartPlanModal(); oneClickDeduplicate();" class="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold">Inspect &amp; Delete Extras</button>
+          </div>
+        `;
+      } catch (e) {
+        body.innerHTML = `<div class="text-rose-300">Plan error: ${escHtml(e.message)}</div>`;
+      }
+    }
+
+    async function evictCloudPath(filePath) {
+      beginWork('Evicting Local Cloud Download', filePath);
+      try {
+        const res = await fetch(`${API_BASE}/api/evict-cloud-download`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: filePath })
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          showToast(data.error || 'Eviction failed', true);
+          recordActivity('Cloud Evict', false, data.error || 'Failed');
+          return;
+        }
+        const freed = data.disk_free_delta_bytes || data.before_bytes || 0;
+        const msg = `Evicted local download for ${data.name} (kept in cloud)`;
+        showToast(`✓ ${msg}`);
+        recordActivity('Cloud Evict', true, msg, {
+          telemetryBefore: data.telemetry_before,
+          telemetryAfter: data.telemetry_after,
+          freedBytes: freed
+        });
+        await refreshLiveScan(false);
+      } catch (e) {
+        showToast(`Evict error: ${e.message}`, true);
+      } finally {
+        endWork();
+      }
+    }
+
+    // ── 1-Click Auto-Optimize & Free Space ──
+    let _autoOptPlan = null;
+    function closeAutoOptimizeModal() {
+      document.getElementById('auto-optimize-modal').classList.add('hidden');
+    }
+
+    async function oneClickAutoOptimize() {
+      const modal = document.getElementById('auto-optimize-modal');
+      const body = document.getElementById('auto-optimize-body');
+      const sumEl = document.getElementById('auto-optimize-summary');
+      const goBtn = document.getElementById('btn-auto-opt-go');
+      modal.classList.remove('hidden');
+      goBtn.classList.add('hidden');
+      body.innerHTML = `<div class="text-slate-400">Auto-allocating caches, build sub-targets, cloud evictions, and duplicates...</div>`;
+      sumEl.textContent = 'Scanning...';
+      try {
+        const tgt = state.telemetry.target_free_gb || 74;
+        const res = await fetch(`${API_BASE}/api/smart-plan?target_gb=${encodeURIComponent(tgt)}`);
+        const d = await res.json();
+        if (!d.ok) {
+          body.innerHTML = `<div class="text-rose-300">${escHtml(d.error || 'Could not build auto-optimize plan')}</div>`;
+          return;
+        }
+        const cloudItems = (state.candidates || []).filter(c => c.already_in_cloud);
+        const cloudBytes = cloudItems.reduce((a, c) => a + (c.size_bytes || 0), 0);
+        const localItems = (state.candidates || []).filter(c => !c.already_in_cloud).slice(0, 10);
+        const localBytes = localItems.reduce((a, c) => a + (c.size_bytes || 0), 0);
+        _autoOptPlan = { ...d, cloudItems, cloudBytes, localItems, localBytes };
+
+        const estFree = (d.safe_caches_bytes || 0) + (d.sub_targets_bytes || 0) + cloudBytes + (d.duplicate_extras_bytes || 0);
+        sumEl.innerHTML = `Estimated space freed: <strong class="text-emerald-300">${fmtBytes(estFree)}</strong>`;
+        goBtn.classList.remove('hidden');
+
+        body.innerHTML = `
+          <label class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start gap-2.5 cursor-pointer">
+            <input type="checkbox" id="opt-chk-caches" checked class="accent-emerald-400 mt-0.5" />
+            <div class="flex-1">
+              <div class="font-bold text-white">1. Clean Verified Safe Caches (${d.safe_caches.length} target(s) — ${fmtBytes(d.safe_caches_bytes)})</div>
+              <div class="text-[11px] text-slate-400 font-mono truncate">${escHtml(d.safe_caches.map(c => c.name).join(', ') || 'None')}</div>
+            </div>
+          </label>
+          <label class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start gap-2.5 cursor-pointer">
+            <input type="checkbox" id="opt-chk-subtargets" checked class="accent-emerald-400 mt-0.5" />
+            <div class="flex-1">
+              <div class="font-bold text-white">2. Clean Build &amp; Xcode Sub-Targets (${d.sub_targets.length} folder(s) — ${fmtBytes(d.sub_targets_bytes)})</div>
+              <div class="text-[11px] text-slate-400 font-mono truncate">${escHtml(d.sub_targets.map(t => `${t.project}/${t.name}`).join(', ') || 'None')}</div>
+            </div>
+          </label>
+          <label class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start gap-2.5 cursor-pointer">
+            <input type="checkbox" id="opt-chk-evict" ${cloudItems.length ? 'checked' : ''} class="accent-sky-400 mt-0.5" />
+            <div class="flex-1">
+              <div class="font-bold text-white">3. Evict Local Cloud Downloads via <code>brctl</code> (${cloudItems.length} item(s) — ${fmtBytes(cloudBytes)})</div>
+              <div class="text-[11px] text-slate-400">Reclaims local SSD cache on macOS while keeping files in iCloud/Google Drive.</div>
+            </div>
+          </label>
+          <label class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start gap-2.5 cursor-pointer">
+            <input type="checkbox" id="opt-chk-dups" ${d.duplicate_extras.length ? 'checked' : ''} class="accent-rose-400 mt-0.5" />
+            <div class="flex-1">
+              <div class="font-bold text-white">4. Delete Redundant Exact SHA-256 Duplicate Copies (${d.duplicate_extras.length} file(s) — ${fmtBytes(d.duplicate_extras_bytes)})</div>
+              <div class="text-[11px] text-slate-400">Keeps the first copy in every duplicate group; deletes only exact redundant copies.</div>
+            </div>
+          </label>
+          <label class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start gap-2.5 cursor-pointer">
+            <input type="checkbox" id="opt-chk-vault" class="accent-cyan-400 mt-0.5" />
+            <div class="flex-1">
+              <div class="font-bold text-white">5. Copy Top ${localItems.length} Local Large File(s) to Active Cloud Vault (${fmtBytes(localBytes)})</div>
+              <div class="text-[11px] text-slate-400">Originals remain safely on disk; creates SHA-256 verified copies + <code>.cloudstub</code> receipts.</div>
+            </div>
+          </label>
+        `;
+      } catch (e) {
+        body.innerHTML = `<div class="text-rose-300">Auto-optimize error: ${escHtml(e.message)}</div>`;
+      }
+    }
+
+    async function executeAutoOptimize() {
+      if (!_autoOptPlan) return;
+      const plan = _autoOptPlan;
+      const doCaches = Boolean(document.getElementById('opt-chk-caches')?.checked);
+      const doSubTargets = Boolean(document.getElementById('opt-chk-subtargets')?.checked);
+      const doEvict = Boolean(document.getElementById('opt-chk-evict')?.checked);
+      const doDups = Boolean(document.getElementById('opt-chk-dups')?.checked);
+      const doVault = Boolean(document.getElementById('opt-chk-vault')?.checked);
+      closeAutoOptimizeModal();
+
+      beginWork('1-Click Auto-Optimize', 'Running allocated cleanup, cloud eviction, and vault steps...');
+      let totalFreed = 0;
+      let totalCopied = 0;
+      let opsOk = 0;
+      const errors = [];
+      let firstTel = null;
+      let lastTel = null;
+
+      try {
+        if (doCaches) {
+          for (const c of (plan.safe_caches || [])) {
+            const r = await fetch(`${API_BASE}/api/clean-cache`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ cache_id: c.id })
+            });
+            const d = await r.json();
+            if (d.ok) {
+              if (!firstTel) firstTel = d.telemetry_before;
+              lastTel = d.telemetry_after;
+              totalFreed += (d.freed_bytes || 0);
+              opsOk += 1;
+            } else errors.push(`${c.name}: ${d.error}`);
+          }
+        }
+        if (doSubTargets) {
+          for (const t of (plan.sub_targets || [])) {
+            const r = await fetch(`${API_BASE}/api/clean-project-target`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ path: t.path })
+            });
+            const d = await r.json();
+            if (d.ok) {
+              if (!firstTel) firstTel = d.telemetry_before;
+              lastTel = d.telemetry_after;
+              totalFreed += (d.freed_bytes || 0);
+              opsOk += 1;
+            } else errors.push(`${t.name}: ${d.error}`);
+          }
+        }
+        if (doEvict) {
+          for (const c of (plan.cloudItems || [])) {
+            const r = await fetch(`${API_BASE}/api/evict-cloud-download`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ path: c.path })
+            });
+            const d = await r.json();
+            if (d.ok) {
+              if (!firstTel) firstTel = d.telemetry_before;
+              lastTel = d.telemetry_after;
+              totalFreed += (d.disk_free_delta_bytes || 0);
+              opsOk += 1;
+            } else errors.push(`${c.name}: ${d.error}`);
+          }
+        }
+        if (doDups) {
+          for (const dup of (plan.duplicate_extras || [])) {
+            const r = await fetch(`${API_BASE}/api/delete-local-path`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ path: dup.path, confirm_delete: true })
+            });
+            const d = await r.json();
+            if (d.ok) {
+              if (!firstTel) firstTel = d.telemetry_before;
+              lastTel = d.telemetry_after;
+              totalFreed += (d.freed_bytes || 0);
+              opsOk += 1;
+            } else errors.push(`${dup.path}: ${d.error}`);
+          }
+        }
+        if (doVault) {
+          const leaveStub = Boolean(document.getElementById('leave-stub-checkbox')?.checked);
+          for (const item of (plan.localItems || [])) {
+            const r = await fetch(`${API_BASE}/api/offload`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                file_path: item.path,
+                provider_id: state.selectedProviderId,
+                leave_stub: leaveStub,
+                dry_run: false
+              })
+            });
+            const d = await r.json();
+            if (d.ok) {
+              totalCopied += (d.size_bytes || 0);
+              opsOk += 1;
+            } else errors.push(`${item.name}: ${d.error}`);
+          }
+        }
+
+        state.sessionReclaimedBytes += totalFreed;
+        state.sessionCopiedBytes += totalCopied;
+        const msg = `Auto-Optimize completed ${opsOk} step(s): freed ${fmtBytes(totalFreed)}${totalCopied > 0 ? `, copied ${fmtBytes(totalCopied)} to vault` : ''}`;
+        showToast(`✓ ${msg}`, opsOk === 0 && errors.length > 0);
+        recordActivity('Auto-Optimize', opsOk > 0 || errors.length === 0, msg, {
+          telemetryBefore: firstTel,
+          telemetryAfter: lastTel,
+          freedBytes: totalFreed,
+          partialErrors: errors
+        });
+        await refreshLiveScan(false);
+      } catch (e) {
+        showToast(`Auto-Optimize error: ${e.message}`, true);
+        recordActivity('Auto-Optimize', false, e.message);
+      } finally {
+        endWork();
       }
     }
 
@@ -998,11 +3049,13 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       renderCandidates();
       renderCaches();
       renderLedger();
+      renderActivityAndReceipt();
+      renderCollectorTray();
     }
 
     window.addEventListener('DOMContentLoaded', () => {
       setOsProfile('macos');
-      refreshLiveScan();
+      refreshLiveScan(false);
     });
   </script>
 </body>
