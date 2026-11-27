@@ -17,6 +17,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Check dashboard JavaScript syntax
+        run: node tests/check_dashboard_syntax.cjs
       - name: Compile Python sources
         run: python -m py_compile space_guard_agent.py test_store_audit.py
       - name: Run portable cryptographic and store-contract tests

@@ -313,7 +313,7 @@
               <label class="text-xs text-slate-400 block mb-1">Adjust Target Free Space (GB): <span id="slider-val-display" class="text-white font-bold">74 GB</span></label>
               <input type="range" id="target-slider" min="15" max="200" step="1" value="74" oninput="onTargetSliderChange(this.value)" class="w-full accent-cyan-400 cursor-pointer" />
             </div>
-            <button onclick="cleanAllSafeCaches()" id="btn-1click-clean" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-500/25 transition flex items-center gap-2">
+            <button onclick="cleanAllSafeCaches()" id="btn-1click-clean" disabled title="Unavailable pending safety review" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-500/25 transition flex items-center gap-2">
               <span>✨</span> 1-Click Smart Clean All Safe Caches
             </button>
             <button onclick="autoSelectForTarget()" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-semibold text-xs shadow-lg shadow-cyan-500/20 transition">
@@ -617,7 +617,6 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
         console.warn('Candidate load note:', e);
       }
     }
-    }
 
     async function onTargetSliderChange(val) {
       const target = parseFloat(val);
@@ -895,33 +894,8 @@ rclone copy --checksum ./archive.tar.zst r2:my-vault/</code></pre>
       }
     }
 
-    async function cleanAllSafeCaches() {
-      const btn = document.getElementById('btn-1click-clean');
-      if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '<span>⏳</span> Cleaning Safe Caches...';
-      }
-      try {
-        const res = await fetch(, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Content-Length': '2' },
-          body: '{}'
-        });
-        const data = await res.json();
-        if (data.ok) {
-          showToast();
-          await refreshLiveScan();
-        } else {
-          showToast(, true);
-        }
-      } catch (e) {
-        showToast(, true);
-      } finally {
-        if (btn) {
-          btn.disabled = false;
-          btn.innerHTML = '<span>✨</span> 1-Click Smart Clean All Safe Caches';
-        }
-      }
+    function cleanAllSafeCaches() {
+      showToast('Bulk cleaning is unavailable while its safety behavior is reviewed.', true);
     }
 
     async function cleanCacheById(cacheId) {
