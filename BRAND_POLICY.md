@@ -1,0 +1,3 @@
+# CloudSpaceGuard — identity policy
+
+Public product: CloudSpaceGuard. Preserve existing executable, package IDs, data paths, storage engine and all recovery safeguards. Spaced Cloud Space Guard is a legacy display spelling. This branch changes six display source files only; README, startup wrappers and additional historical references may still carry the old spelling. The native build script and manifest are source evidence, not proof of a packaged app. Existing safety PRs #3, #5–#8 and #10 and governance PR #9 remain separate; reconcile title-only changes without weakening their tests. Read ZERO_ILLUSION_STANDARD.md. No destructive action, release, store change or merge authorized. Source checks are not runtime or restoration verification.

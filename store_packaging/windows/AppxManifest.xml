@@ -12,7 +12,7 @@
     ProcessorArchitecture="x64" />
 
   <Properties>
-    <DisplayName>Cloud Space Guard</DisplayName>
+    <DisplayName>CloudSpaceGuard</DisplayName>
     <PublisherDisplayName>Bobby Blanco</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
     <Description>Cross-Platform Multi-Cloud Offloader &amp; SHA-256 Verified Space Saver for Windows, macOS, Linux, and ChromeOS.</Description>
@@ -29,7 +29,7 @@
   <Applications>
     <Application Id="CloudSpaceGuard" Executable="CloudSpaceGuard.exe" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
-        DisplayName="Cloud Space Guard"
+        DisplayName="CloudSpaceGuard"
         Description="Multi-Cloud SHA-256 Verify-Before-Delete &amp; Disk Space Guard"
         BackgroundColor="#0B1120"
         Square150x150Logo="Assets\Square150x150Logo.png"
