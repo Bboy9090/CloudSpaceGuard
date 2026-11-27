@@ -1,0 +1,28 @@
+{
+  "title": "Cloud Space Guard",
+  "slug": "cloud-space-guard",
+  "exe_name": "CloudSpaceGuard",
+  "version": "1.2.0",
+  "width": 1380,
+  "height": 860,
+  "theme": {
+    "bg": "#0B1314",
+    "surface": "#151F21",
+    "surface2": "#202E30",
+    "primary": "#06BED7",
+    "accent": "#415CEA",
+    "secondary": "#60A5FA",
+    "text": "#F4F7FC",
+    "muted": "#9CAEC8"
+  },
+  "extra_datas": [
+    {
+      "src": "space_guard_agent.py",
+      "dst": "."
+    },
+    {
+      "src": "web",
+      "dst": "web"
+    }
+  ]
+}
