@@ -28,9 +28,9 @@ cat > "${CONTENTS_DIR}/Info.plist" <<EOF
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>Cloud Space Guard</string>
+    <string>CloudSpaceGuard</string>
     <key>CFBundleDisplayName</key>
-    <string>Cloud Space Guard</string>
+    <string>CloudSpaceGuard</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -88,7 +88,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             defer: false
         )
         window.center()
-        window.title = "Cloud Space Guard — Multi-Cloud Offload & Space Saver"
+        window.title = "CloudSpaceGuard — Multi-Cloud Offload & Space Saver"
 
         let config = WKWebViewConfiguration()
         webView = WKWebView(frame: rect, configuration: config)
@@ -105,7 +105,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if attempt >= 20 {
             let html = """
             <html><body style="background:#0b1120;color:white;font-family:-apple-system;padding:32px">
-            <h2>Cloud Space Guard backend did not start.</h2>
+            <h2>CloudSpaceGuard backend did not start.</h2>
             <p>Quit the app, verify Python 3 is available, and relaunch.</p>
             </body></html>
             """
@@ -135,7 +135,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: "Authorize Folder (NSOpenPanel Sandbox Grant)...", action: #selector(authorizeFolder), keyEquivalent: "o")
         appMenu.addItem(NSMenuItem.separator())
-        appMenu.addItem(withTitle: "Quit Cloud Space Guard", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Quit CloudSpaceGuard", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appMenuItem.submenu = appMenu
         NSApp.mainMenu = mainMenu
     }
@@ -146,7 +146,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
         panel.prompt = "Grant Access"
-        panel.message = "Select a folder or Cloud Vault to grant Cloud Space Guard read/write access."
+        panel.message = "Select a folder or Cloud Vault to grant CloudSpaceGuard read/write access."
         panel.beginSheetModal(for: window) { _ in }
     }
 
