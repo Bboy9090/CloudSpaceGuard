@@ -1187,12 +1187,23 @@ def main() -> None:
     p_clean = sub.add_parser("clean-cache", help="Safely purge a developer/system cache by ID")
     p_clean.add_argument("--id", required=True, help="Cache ID from scan output (e.g., projects_rust_targets, npm_cache)")
 
+    p_pro = sub.add_parser("pro-capacity-report", help="Optional licensed, read-only multi-target capacity report (candidate)")
+    p_pro.add_argument("--license", required=True, help="Signed direct-desktop license file")
+    p_pro.add_argument("--target-gib", type=int, action="append", required=True, help="Integer GiB target; repeat for up to twelve unique scenarios")
+
     p_serve = sub.add_parser("serve", help="Start the local Cloud Space Guard Web Dashboard")
     p_serve.add_argument("--port", type=int, default=DEFAULT_PORT, help="Port number (default 7474)")
 
     args = parser.parse_args()
 
-    if args.command == "status":
+    if args.command == "pro-capacity-report":
+        from pro_capacity_report import create_capacity_report, LicenseError
+        try:
+            print(json.dumps(create_capacity_report(args.license, args.target_gib), indent=2))
+        except (LicenseError, OSError) as exc:
+            print(json.dumps({"ok": False, "code": "PRO_REPORT_UNAVAILABLE", "error": str(exc)}))
+            sys.exit(2)
+    elif args.command == "status":
         print(json.dumps({
             "telemetry": get_disk_telemetry(args.target_gb),
             "providers": discover_cloud_providers(),
